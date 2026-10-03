@@ -119,6 +119,21 @@ namespace {
     // Standard (the "mid" distance): the game's own, brought in by this much.
     constexpr float standard_scale = 0.85f;
     enum class Distance { Standard, Far, Shoulder };
+    // Smoothing (Conker Redux): the camera's own moves glide instead of jumping. Its own turns (round
+    // a post, back to where it could see Conker) settle over yaw_settle_seconds (the stick's turns
+    // still go at once); rising to look past something over lift_rise_seconds; the line of sight's
+    // distance in over sight_in_seconds (never past what's in the way) and out over sight_out_seconds.
+    constexpr float yaw_settle_seconds = 0.12f;
+    constexpr float lift_rise_seconds = 0.1f;
+    constexpr float sight_in_seconds = 0.06f, sight_out_seconds = 0.3f;
+    // Camera Follow (Conker Redux): with the stick and mouse left alone for follow_delay seconds, the
+    // camera drifts behind the way Conker is going, over follow_seconds at a run (follow_run_speed
+    // units a second or more; slower, more gently), not below follow_min_speed, and not when he's
+    // going more than follow_max_angle round from where it looks (running at the camera).
+    constexpr float follow_delay = 0.9f;
+    constexpr float follow_seconds = 1.6f;
+    constexpr float follow_run_speed = 250.0f, follow_min_speed = 25.0f;
+    constexpr float follow_max_angle = 2.3f;
 
     // Scroll wheel notches since the view last read them (SDL event watch: the
     // frontend's own event loop consumes the events).
@@ -156,6 +171,12 @@ namespace {
         float shoulder = 0.0f;          // 0 to 1: how far the over-the-shoulder shift has glided in
         float shoulder_room = shoulder_offset; // how far right of Conker is clear this frame
         float ground_lift = 0.0f;       // units the eye is raised off the ground under it
+        float view_yaw = 0.0f;          // the yaw drawn: eases toward yaw (the camera's own turns)
+        bool has_view_yaw = false;
+        float sight_distance = 0.0f;    // the line of sight's distance, eased (0: none yet)
+        double last_input = 0.0;        // game seconds when the stick or mouse last turned it
+        float last_pivot[2] = {};       // Conker's feet (x, z) last update, for Camera Follow
+        bool has_last_pivot = false;
     } orbit;
     // The over-the-shoulder shift applied while the view is built (conker_mouse_camera), undone
     // once it's built (conker_mouse_camera_view_built).
@@ -379,7 +400,8 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
         farthest = (i == 0) ? d : std::max(farthest, d);
     }
     orbit.wanted = std::clamp(orbit.wanted * std::pow(zoom_step, (float)-notches), nearest, farthest);
-    orbit.yaw += mouse_x * degrees_per_pixel * degrees_to_radians;
+    const float input_yaw = mouse_x * degrees_per_pixel * degrees_to_radians; // the stick's and mouse's turn
+    orbit.yaw += input_yaw;
 
     orbit.pitch = std::clamp(orbit.pitch + mouse_y * degrees_per_pixel * degrees_to_radians, min_pitch, max_pitch);
 
@@ -446,6 +468,31 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
         *lift_out = best_lift;
         return best_along;
     };
+    // Camera Follow: drift behind the way Conker is going (his feet, +0x2A4/+0x2AC, since the last
+    // update), once the stick and mouse have been left alone a moment.
+    {
+        if (mouse_x != 0.0f || mouse_y != 0.0f || notches != 0) {
+            orbit.last_input = now;
+        }
+        const float px = read_float(rdram, camera, 0x2A4), pz = read_float(rdram, camera, 0x2AC);
+        if (orbit.has_last_pivot && seconds > 0.0f && conker::camera_follow_enabled() && now - orbit.last_input > follow_delay) {
+            const float vx = (px - orbit.last_pivot[0]) / seconds, vz = (pz - orbit.last_pivot[1]) / seconds;
+            const float speed = std::sqrt(vx * vx + vz * vz);
+            if (speed > follow_min_speed) {
+                constexpr float two_pi = 2.0f * 3.14159265358979f;
+                const float behind = std::atan2(-vz, -vx); // the eye's direction from him, behind his way
+                const float turn = std::remainder(behind - orbit.yaw, two_pi);
+                if (std::abs(turn) < follow_max_angle) {
+                    const float strength = std::min(speed / follow_run_speed, 1.0f);
+                    orbit.yaw += turn * strength * (1.0f - std::exp(-seconds / follow_seconds));
+                }
+            }
+        }
+        orbit.last_pivot[0] = px;
+        orbit.last_pivot[1] = pz;
+        orbit.has_last_pivot = true;
+    }
+
     float needed_lift = 0.0f;
     float view = best_view(orbit.yaw, &needed_lift);
     const bool good = view >= std::min(sight_closest, orbit.reach - 1.0f);
@@ -483,22 +530,39 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
     }
     orbit.shown_yaw = orbit.yaw;
     orbit.has_shown_yaw = true;
-    if (needed_lift >= orbit.lift) {
-        orbit.lift = needed_lift;
+    const float lift_seconds = needed_lift >= orbit.lift ? lift_rise_seconds : lift_ease_seconds;
+    orbit.lift += (needed_lift - orbit.lift) * (1.0f - std::exp(-seconds / lift_seconds));
+    // The yaw drawn: the stick's turn at once, the camera's own turns gliding.
+    if (!orbit.has_view_yaw) {
+        orbit.view_yaw = orbit.yaw;
+        orbit.has_view_yaw = true;
     } else {
-        orbit.lift += (needed_lift - orbit.lift) * (1.0f - std::exp(-seconds / lift_ease_seconds));
+        constexpr float two_pi = 2.0f * 3.14159265358979f;
+        orbit.view_yaw += input_yaw;
+        orbit.view_yaw += std::remainder(orbit.yaw - orbit.view_yaw, two_pi) * (1.0f - std::exp(-seconds / yaw_settle_seconds));
     }
     float dir[3];
-    direction(orbit.yaw, std::min(orbit.pitch + orbit.lift, max_pitch), dir);
+    direction(orbit.view_yaw, std::min(orbit.pitch + orbit.lift, max_pitch), dir);
     float along = clear_reach(rdram, ctx, camera, look, dir, orbit.reach);
-    if (along < std::min(sight_closest, orbit.reach - 1.0f) && orbit.lift != needed_lift) {
+    if (along < std::min(sight_closest, orbit.reach - 1.0f) && orbit.lift > needed_lift) {
         // Easing back down, the angle on the way can catch something (a beam above): the one found
         // clear instead.
         orbit.lift = needed_lift;
-        direction(orbit.yaw, std::min(orbit.pitch + orbit.lift, max_pitch), dir);
+        direction(orbit.view_yaw, std::min(orbit.pitch + orbit.lift, max_pitch), dir);
         along = clear_reach(rdram, ctx, camera, look, dir, orbit.reach);
     }
-    const float distance = (along >= orbit.reach) ? orbit.reach : std::clamp(along - sight_margin, std::min(sight_nearest, orbit.reach), orbit.reach);
+    const float sight = (along >= orbit.reach) ? orbit.reach : std::clamp(along - sight_margin, std::min(sight_nearest, orbit.reach), orbit.reach);
+    // Glide to it: in quickly, out slowly, and never past what's in the way.
+    if (orbit.sight_distance <= 0.0f) {
+        orbit.sight_distance = sight;
+    } else {
+        const float sight_seconds = sight < orbit.sight_distance ? sight_in_seconds : sight_out_seconds;
+        orbit.sight_distance += (sight - orbit.sight_distance) * (1.0f - std::exp(-seconds / sight_seconds));
+    }
+    if (along < orbit.reach) {
+        orbit.sight_distance = std::min(orbit.sight_distance, along);
+    }
+    const float distance = orbit.sight_distance;
     float target[3];
     for (int i = 0; i < 3; i++) target[i] = look[i] + dir[i] * distance;
 
@@ -646,6 +710,9 @@ extern "C" void conker_mouse_camera(uint8_t* rdram, recomp_context* ctx) {
         orbit.has_shown_yaw = false;
         orbit.shoulder = 0.0f;
         orbit.ground_lift = 0.0f;
+        orbit.has_view_yaw = false;
+        orbit.sight_distance = 0.0f;
+        orbit.has_last_pivot = false;
     }
 }
 

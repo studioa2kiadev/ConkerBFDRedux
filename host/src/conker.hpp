@@ -16,6 +16,7 @@ namespace recomp::config {
 }
 
 struct _SDL_GameController;
+struct SDL_Window;
 
 namespace conker {
     inline constexpr const char* program_name = "Conker Redux";
@@ -44,6 +45,33 @@ namespace conker {
         ultramodern::input::connected_device_info_t device_info(int controller);
         // The controllers holding ports 1-4, in port order; returns how many hold one.
         int port_controllers(std::array<_SDL_GameController*, 4>& out);
+    }
+
+    // frontend.cpp: the window, and its size in pixels (nullptr, 0 x 0 before it exists).
+    namespace frontend {
+        ::SDL_Window* sdl_window();
+        void window_pixels(int* width, int* height);
+    }
+
+    // settings.cpp: the VIDEO page's settings. Rows: 0 RESOLUTION (480p, 720p, 1080p, 1440p, 4K),
+    // 1 ASPECT (4:3, 16:9), 2 REFRESH RATE (30, 60), 3 FULLSCREEN (off, on), 4 CAMERA FOLLOW
+    // (off, on). UI thread only.
+    namespace video {
+        int count(int row);
+        int value(int row);
+        void change(int row, int direction);
+        // RESOLUTION as the window's size (windowed) or the monitor's display mode (fullscreen),
+        // for the ASPECT chosen. Main thread; frontend.cpp calls it once the window exists.
+        void apply_display();
+    }
+
+    // game_menu.cpp (Conker Redux): the GAME SETTINGS row under CHEATS in the game's Options, its
+    // VIDEO page, and the CLOSE GAME? popup on the heading carousel, in the game's own art.
+    namespace game_menu {
+        void on_ui_ready();                            // frontend.cpp, from the launcher's init
+        void update();                                 // main thread (update_gfx)
+        void on_vi(uint8_t* rdram);                    // main.cpp, every VI
+        void filter_input(uint16_t* buttons, float* x, float* y); // player 1's input, each read
     }
 
     // rumble.cpp (CBFD-Recompiled): the Rumble Pak, sent to each port's controller.
@@ -76,6 +104,8 @@ namespace conker {
     }
     bool skip_intro();
     bool free_camera_enabled();
+    // settings.cpp: Camera Follow (the Free Camera drifts back behind Conker when left alone).
+    bool camera_follow_enabled();
     // free_camera.cpp: the right stick for the Free Camera (x right, y up, past the dead zone).
     void free_camera_stick(float* x, float* y);
     // scene_fixes.cpp: Skip Intro's steps.

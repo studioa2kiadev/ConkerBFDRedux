@@ -23,7 +23,7 @@ index 33f79ab..6cc3bb3 100644
          bool RT64SamplePositionsSupported();
          bool RT64HighPrecisionFBEnabled();
 diff --git a/recompui/src/renderer/rt64_render_context.cpp b/recompui/src/renderer/rt64_render_context.cpp
-index a7954c7..fb286c7 100644
+index a7954c7..d69ae13 100644
 --- a/recompui/src/renderer/rt64_render_context.cpp
 +++ b/recompui/src/renderer/rt64_render_context.cpp
 @@ -2,6 +2,7 @@
@@ -73,3 +73,13 @@ index a7954c7..fb286c7 100644
          return false;
      }
  
+@@ -378,7 +395,8 @@ bool renderer::RT64Context::update_config(const ultramodern::renderer::GraphicsC
+     set_application_user_config(app.get(), new_config);
+ 
+     // When updating the user configuration, only discard framebuffers if an option was changed that affects the resolution.
+-    bool resolution_changed = new_config.res_option != old_config.res_option;
++    // Conker: the game's own settings (the user config extension) can change the resolution too.
++    bool resolution_changed = new_config.res_option != old_config.res_option || extension_changed;
+     bool aspect_ratio_changed = new_config.ar_option != old_config.ar_option;
+     bool downsampling_changed = new_config.ds_option != old_config.ds_option;
+     bool msaa_changed = new_config.msaa_option != old_config.msaa_option;

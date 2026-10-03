@@ -148,6 +148,7 @@ namespace {
         if (g_rdram != nullptr) {
             conker::skip_intro_on_vi(g_rdram);
             conker::qol::on_vi_memory(g_rdram);
+            conker::game_menu::on_vi(g_rdram);
         }
     }
 

@@ -23,6 +23,7 @@
 #include "nfd.h"
 
 #include "librecomp/game.hpp"
+#include "ultramodern/ultramodern.hpp"
 #include "recompinput/input_events.h"
 #include "recompinput/input_state.h"
 #include "recompinput/players.h"
@@ -180,6 +181,18 @@ namespace {
         conker::pad_mappings::fix_all();
         NFD_Init(); // file dialogs (Load ROM, mods)
         conker_mouse_camera_init(); // the Free Camera's scroll wheel zoom (free_camera.cpp)
+        // Closing the window (its X, or Alt+F4) quits at once, as the game's own QUIT GAME does
+        // (game_menu.cpp), instead of recompui asking first while the game runs: an event watch sees
+        // SDL_QUIT as it's queued, quits, and takes it back out before recompui's loop reads it. (Not
+        // SDL_SetEventFilter: setting one empties SDL's queue, which lost the controllers' connect
+        // events at start-up, so a controller only worked once plugged in again.)
+        SDL_AddEventWatch([](void*, SDL_Event* event) -> int {
+            if (event->type == SDL_QUIT) {
+                ultramodern::quit();
+                SDL_FlushEvent(SDL_QUIT);
+            }
+            return 1;
+        }, nullptr);
         conker::qol::init(); // Pause When Unfocused watches the window's focus
         return nullptr;
     }
@@ -195,6 +208,8 @@ namespace {
             std::fprintf(stderr, "[frontend] SDL_CreateWindow failed: %s\n", SDL_GetError());
             return {};
         }
+        // The VIDEO page's RESOLUTION: the window's size, or the monitor's mode in full screen.
+        conker::video::apply_display();
 #ifdef _WIN32
         SDL_SysWMinfo info;
         SDL_VERSION(&info.version);
@@ -209,6 +224,7 @@ namespace {
         recompinput::handle_events();
         conker::fps_counter::update();
         conker::crosshair::update();
+        conker::game_menu::update();
         conker::qol::update();
     }
 
@@ -304,6 +320,7 @@ namespace {
         // recompui's UI exists now: the FPS counter can make its own.
         conker::fps_counter::on_ui_ready();
         conker::crosshair::on_ui_ready();
+        conker::game_menu::on_ui_ready();
         conker::qol::on_ui_ready();
 
         recompui::GameOptionsMenu* options = menu->init_game_options_menu(
@@ -413,6 +430,11 @@ namespace {
             constexpr uint16_t c_right = 0x0001, c_left = 0x0002, c_down = 0x0004, c_up = 0x0008;
             if (cx != 0.0f) *buttons &= (uint16_t)~(c_left | c_right);
             if (cy != 0.0f) *buttons &= (uint16_t)~(c_up | c_down);
+        }
+        // The GAME SETTINGS row, VIDEO page and CLOSE GAME? popup (game_menu.cpp) take player 1's input
+        // while they're in use.
+        if (controller == 0) {
+            conker::game_menu::filter_input(buttons, x, y);
         }
         if (controller == 0 && conker::skip_intro_pressing_start()) {
             *buttons |= 0x1000; // Start
@@ -676,6 +698,18 @@ ultramodern::input::connected_device_info_t conker::frontend::device_info(int co
         return { ultramodern::input::Device::Controller, ultramodern::input::Pak::RumblePak };
     }
     return { ultramodern::input::Device::None, ultramodern::input::Pak::None };
+}
+
+SDL_Window* conker::frontend::sdl_window() {
+    return window;
+}
+
+void conker::frontend::window_pixels(int* width, int* height) {
+    *width = 0;
+    *height = 0;
+    if (window != nullptr) {
+        SDL_GetWindowSizeInPixels(window, width, height);
+    }
 }
 
 void conker::frontend::init(recomp::GameEntry& game) {

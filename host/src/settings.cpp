@@ -8,7 +8,19 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <algorithm>
+#include <climits>
+#include <cstdio>
 #include <vector>
+
+#include <SDL.h>
+#include <SDL_syswm.h>
+#ifdef _WIN32
+#   ifndef NOMINMAX
+#       define NOMINMAX
+#   endif
+#   include <Windows.h>
+#endif
 
 #include "recompui/config.h"
 #include "recompui/renderer.h"
@@ -26,6 +38,7 @@ namespace {
 
     std::atomic<bool> skip_intro_enabled{ false };
     std::atomic<bool> free_camera{ true };
+    std::atomic<bool> camera_follow{ true };
     std::atomic<bool> crosshair_on{ true };
     // qol.cpp's options.
     std::atomic<bool> saving_icon_on{ true }, pause_unfocused_on{ true }, skip_cutscene_on{ false };
@@ -41,7 +54,11 @@ namespace {
         const std::string screen_filter = "conker_screen_filter";
         const std::string shading = "conker_shading";
         const std::string show_fps = "show_fps"; // (fps_counter.cpp)
+        // Conker Redux: the VIDEO page's RESOLUTION (game_menu.cpp): the game drawn at that many lines.
+        const std::string redux_resolution = "redux_resolution";
     }
+    enum class ReduxResolution : uint32_t { Auto, P480, P720, P1080, P1440, P2160, Count };
+    constexpr double redux_resolution_lines[] = { 0.0, 480.0, 720.0, 1080.0, 1440.0, 2160.0 };
     enum class TextureFilter : uint32_t { N64, Smooth };
     enum class Upscale2D : uint32_t { Original, ScaledOnly, All };
     enum class ScreenFilter : uint32_t { Sharp, Smooth };
@@ -56,6 +73,19 @@ namespace {
     // Called by recompui whenever it applies the graphics settings to RT64.
     void extend_rt64_config(RT64::UserConfiguration& rt64) {
         rt64.threePointFiltering = (TextureFilter)graphics_value(extra::texture_filter) == TextureFilter::N64;
+        // A chosen resolution: that many lines, a multiple of the N64's 240 (Auto: the window's).
+        const uint32_t resolution = graphics_value(extra::redux_resolution);
+        if (resolution > (uint32_t)ReduxResolution::Auto && resolution < (uint32_t)ReduxResolution::Count) {
+            rt64.resolution = RT64::UserConfiguration::Resolution::Manual;
+            rt64.resolutionMultiplier = redux_resolution_lines[resolution] / 240.0;
+            rt64.downsampleMultiplier = 1;
+        }
+        static const bool debug = std::getenv("CONKER_MENU_DEBUG") != nullptr;
+        if (debug) {
+            std::printf("[game menu] RT64 config: redux_resolution %u -> resolution mode %d multiplier %.2f\n",
+                resolution, (int)rt64.resolution, rt64.resolutionMultiplier);
+            std::fflush(stdout);
+        }
         switch ((Upscale2D)graphics_value(extra::upscale_2d)) {
             case Upscale2D::Original: rt64.upscale2D = RT64::UserConfiguration::Upscale2D::Original; break;
             case Upscale2D::ScaledOnly: rt64.upscale2D = RT64::UserConfiguration::Upscale2D::ScaledOnly; break;
@@ -99,13 +129,20 @@ namespace {
             "<recomp-color primary>Game</recomp-color> is the frames the game itself makes, up to 30: a drop there with FPS "
             "steady is the game's own slowdown, as on the N64.",
             { { 0u, "Off", "Off" }, { 1u, "On", "On" } }, 0u);
+        graphics.add_enum_option(extra::redux_resolution, "Game Resolution",
+            "The resolution the game is drawn at. <recomp-color primary>Auto</recomp-color> matches the window. "
+            "Also on the VIDEO page under Options in the game's own menu.",
+            { { ReduxResolution::Auto, "Auto", "Auto" }, { ReduxResolution::P480, "P480", "480p" },
+              { ReduxResolution::P720, "P720", "720p" }, { ReduxResolution::P1080, "P1080", "1080p" },
+              { ReduxResolution::P1440, "P1440", "1440p" }, { ReduxResolution::P2160, "P2160", "4K" } },
+            ReduxResolution::Auto);
         graphics.add_option_change_callback(extra::shading,
             [](recomp::config::ConfigValueVariant cur, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
                 rt64_conker_smooth_shading = (Shading)std::get<uint32_t>(cur) == Shading::Smooth ? 1 : 0;
             });
         // It only does anything below the window's resolution, so it's hidden at Auto.
         graphics.add_option_hidden_dependency(extra::screen_filter, gfx::res_option, Resolution::Auto);
-        for (const std::string* id : { &extra::texture_filter, &extra::upscale_2d, &extra::screen_filter }) {
+        for (const std::string* id : { &extra::texture_filter, &extra::upscale_2d, &extra::screen_filter, &extra::redux_resolution }) {
             graphics.add_option_change_callback(*id,
                 [](recomp::config::ConfigValueVariant, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext context) {
                     if (context != recomp::config::OptionChangeContext::Temporary) {
@@ -119,7 +156,7 @@ namespace {
     // What Classic and Modern set. Classic: the game as it looked, ran and played on the N64 (4:3,
     // 30 fps, native resolution, no smoothing of edges, N64 texture filtering, the full intro, the
     // game's own camera, no mouse). Modern: widescreen, 60 fps, the window's
-    // resolution, 4x anti-aliasing, smooth textures, 2D and shading, straight to the save menu, the free
+    // resolution, 4x anti-aliasing, smooth textures, 2D and shading, the full opening, the free
     // camera with auto-follow, and the mouse turning the camera and aiming directly. Settings that
     // are about the player's hands or controller (invert, turning speed, rumble, gyro) are left alone.
     enum class Tab { Graphics, Conker, Accessibility, General };
@@ -146,7 +183,7 @@ namespace {
                 { Tab::Graphics, extra::shading, e(Shading::Original), e(Shading::Smooth) },
                 // Only matters below the window's resolution, as in Classic.
                 { Tab::Graphics, extra::screen_filter, e(ScreenFilter::Sharp), std::nullopt },
-                { Tab::Conker, "skip_intro", V{ false }, V{ true } },
+                { Tab::Conker, "skip_intro", V{ false }, V{ false } }, // Conker Redux: the Rare opening, always
                 { Tab::Conker, "free_camera", V{ false }, V{ true } },
                 { Tab::Conker, "aiming_crosshair", V{ false }, V{ true } },
                 { Tab::Conker, "saving_icon", V{ false }, V{ true } },
@@ -235,7 +272,7 @@ namespace {
             "experience", "Experience",
             "Classic plays the game as it was on the N64: 4:3, 30 frames per second, the original resolution, "
             "the full intro and the game's own camera. Modern picks the recommended settings: widescreen, 60 "
-            "frames per second, full resolution, anti-aliasing, smooth textures and shading, straight to the save menu, "
+            "frames per second, full resolution, anti-aliasing, smooth textures and shading, the full opening, "
             "the free camera, the aiming crosshair and mouse control. While Classic or Modern is picked, the settings it "
             "decides are greyed out; pick Custom to change them yourself. Invert, turning speed, rumble and gyro stay "
             "as you set them.",
@@ -274,6 +311,16 @@ namespace {
         conker.add_option_change_callback("free_camera",
             [](recomp::config::ConfigValueVariant cur, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
                 free_camera = std::get<bool>(cur);
+            });
+        conker.add_bool_option(
+            "camera_follow", "Camera Follow",
+            "With the Free Camera: when the right stick is left alone for a moment, the camera drifts gently "
+            "back behind Conker as he moves (not when he runs toward it). Also on the VIDEO page under Options "
+            "in the game's own menu.",
+            true);
+        conker.add_option_change_callback("camera_follow",
+            [](recomp::config::ConfigValueVariant cur, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+                camera_follow = std::get<bool>(cur);
             });
         conker.add_bool_option(
             "aiming_crosshair", "Aiming Crosshair",
@@ -445,6 +492,10 @@ bool conker::free_camera_enabled() {
     return free_camera;
 }
 
+bool conker::camera_follow_enabled() {
+    return camera_follow;
+}
+
 bool conker::crosshair::enabled() {
     return crosshair_on;
 }
@@ -468,3 +519,226 @@ bool conker::qol::reduce_motion() { return reduce_motion_on; }
 bool conker::qol::always_show_hud() { return always_hud_on; }
 int conker::qol::cash_counter() { return cash_counter_mode; }
 bool conker::qol::longer_spin() { return longer_spin_on; }
+
+// The VIDEO page in the game's Options (game_menu.cpp): RESOLUTION, ASPECT, REFRESH RATE and
+// FULLSCREEN, read and changed here (on the UI thread, where the settings tabs change them too).
+// ASPECT and REFRESH RATE are among the settings Classic and Modern decide: changing one switches the
+// Experience to Custom first, as picking Custom on the Conker tab does.
+namespace {
+    void restore_display(); // (below)
+}
+
+// RESOLUTION's five: 480, 720, 1080, 1440, 4K (the option's values P480...P2160). Still at Auto (the
+// window's, the Graphics tab can pick it), the page shows the one nearest the window's height.
+int conker::video::count(int row) {
+    return row == 0 ? (int)ReduxResolution::Count - 1 : 2;
+}
+// Row 4, CAMERA FOLLOW (the Conker tab's Camera Follow): OFF, ON.
+
+namespace {
+    int resolution_index() {
+        const uint32_t v = graphics_value(extra::redux_resolution);
+        if (v > (uint32_t)ReduxResolution::Auto && v < (uint32_t)ReduxResolution::Count) {
+            return (int)v - 1;
+        }
+        int w = 0, h = 0;
+        conker::frontend::window_pixels(&w, &h);
+        int best = 2;
+        for (int i = 0; i < (int)ReduxResolution::Count - 1; i++) {
+            if (std::abs(redux_resolution_lines[i + 1] - h) < std::abs(redux_resolution_lines[best + 1] - h)) {
+                best = i;
+            }
+        }
+        return best;
+    }
+}
+
+int conker::video::value(int row) {
+    switch (row) {
+        case 0: return resolution_index();
+        case 1: return (AspectRatio)graphics_value(gfx::ar_option) == AspectRatio::Original ? 0 : 1;
+        case 2: return (RefreshRate)graphics_value(gfx::rr_option) == RefreshRate::Original ? 0 : 1;
+        case 3: return (WindowMode)graphics_value(gfx::wm_option) == WindowMode::Fullscreen ? 1 : 0;
+        case 4: return camera_follow ? 1 : 0;
+        default: return 0;
+    }
+}
+
+void conker::video::change(int row, int direction) {
+    using V = recomp::config::ConfigValueVariant;
+    const int n = count(row);
+    const int next = ((value(row) + direction) % n + n) % n;
+    if (row == 4) {
+        recomp::config::Config& conker = recompui::config::get_config("conker");
+        conker.update_option_value("camera_follow", V{ next == 1 });
+        conker.save_config();
+        return;
+    }
+    recomp::config::Config& graphics = recompui::config::get_graphics_config();
+    if (row == 1 || row == 2) {
+        recomp::config::Config& conker = recompui::config::get_config("conker");
+        if ((Experience)std::get<uint32_t>(conker.get_option_value("experience")) != Experience::Custom) {
+            conker.update_option_value("experience", V{ (uint32_t)Experience::Custom });
+        }
+    }
+    // Full screen on: the monitor's mode first, so RT64's borderless window takes its new size;
+    // off: the desktop's back first, so RT64 puts the window back where it was.
+    if (row == 3) {
+        if (next == 1) {
+            graphics.update_option_value(gfx::wm_option, V{ (uint32_t)WindowMode::Fullscreen });
+            apply_display();
+        } else {
+            restore_display();
+        }
+    }
+    switch (row) {
+        case 0:
+            graphics.update_option_value(extra::redux_resolution, V{ (uint32_t)(next + 1) });
+            break;
+        case 1:
+            graphics.update_option_value(gfx::ar_option, V{ (uint32_t)(next == 0 ? AspectRatio::Original : AspectRatio::Expand) });
+            break;
+        case 2:
+            graphics.update_option_value(gfx::rr_option, V{ (uint32_t)(next == 0 ? RefreshRate::Original : RefreshRate::Manual) });
+            if (next == 1) {
+                graphics.update_option_value(gfx::rr_manual_value, V{ 60.0 });
+            }
+            break;
+        case 3:
+            graphics.update_option_value(gfx::wm_option, V{ (uint32_t)(next == 1 ? WindowMode::Fullscreen : WindowMode::Windowed) });
+            break;
+    }
+    graphics.save_config(); // applies it to the renderer
+    recompui::renderer::refresh_user_config_extension();
+    if (row != 2 && !(row == 3 && next == 1)) {
+        apply_display(); // the window's size (or the monitor's mode) for the new RESOLUTION or ASPECT
+    }
+}
+
+// RESOLUTION as a size: the window's (windowed: that many lines, as wide as ASPECT makes it, shrunk
+// to fit the monitor if it's bigger), or the monitor's display mode (fullscreen: RT64's full screen
+// is a borderless window over the monitor, so the monitor is switched to the mode with that many
+// lines nearest that width, highest refresh rate, and the window fitted to it). The desktop's own
+// mode comes back when full screen is left, when the game loses focus (Alt+Tab; switched again on
+// the way back) and on quitting (Windows also undoes it, as a temporary full-screen change, if the
+// program ends any other way). The game is drawn at that many lines either way (extend_rt64_config).
+namespace {
+    bool display_watch_added = false;
+    bool display_suspended = false; // full-screen mode undone while the game is in the background
+#ifdef _WIN32
+    std::wstring changed_device; // the monitor whose mode was changed (empty: none)
+
+    void restore_display() {
+        if (!changed_device.empty()) {
+            ChangeDisplaySettingsExW(changed_device.c_str(), nullptr, nullptr, 0, nullptr);
+            changed_device.clear();
+        }
+    }
+
+    HWND window_handle(SDL_Window* window) {
+        SDL_SysWMinfo info;
+        SDL_VERSION(&info.version);
+        return SDL_GetWindowWMInfo(window, &info) ? info.info.win.window : nullptr;
+    }
+
+    // Switches the monitor to the mode with `height` lines nearest `width` (then the highest refresh
+    // rate); false if it has none or the switch fails. out: the monitor's new rectangle.
+    bool set_display_mode(HMONITOR monitor, int width, int height, RECT* out) {
+        MONITORINFOEXW info{};
+        info.cbSize = sizeof(info);
+        if (!GetMonitorInfoW(monitor, &info)) {
+            return false;
+        }
+        DEVMODEW best{};
+        long long best_score = LLONG_MAX;
+        for (DWORD i = 0;; i++) {
+            DEVMODEW mode{};
+            mode.dmSize = sizeof(mode);
+            if (!EnumDisplaySettingsW(info.szDevice, i, &mode)) {
+                break;
+            }
+            if ((int)mode.dmPelsHeight != height || mode.dmBitsPerPel < 24) {
+                continue;
+            }
+            const long long score = (long long)std::abs((int)mode.dmPelsWidth - width) * 10000 - (long long)mode.dmDisplayFrequency;
+            if (score < best_score) {
+                best_score = score;
+                best = mode;
+            }
+        }
+        if (best_score == LLONG_MAX) {
+            return false;
+        }
+        best.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+        if (ChangeDisplaySettingsExW(info.szDevice, &best, nullptr, CDS_FULLSCREEN, nullptr) != DISP_CHANGE_SUCCESSFUL) {
+            return false;
+        }
+        changed_device = info.szDevice;
+        GetMonitorInfoW(monitor, &info);
+        *out = info.rcMonitor;
+        return true;
+    }
+#else
+    void restore_display() {}
+#endif
+
+    int SDLCALL watch_display_focus(void*, SDL_Event* event) {
+        if (event->type != SDL_WINDOWEVENT) {
+            return 1;
+        }
+        if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+#ifdef _WIN32
+            if (!changed_device.empty()) {
+                restore_display();
+                display_suspended = true;
+            }
+#endif
+        } else if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED && display_suspended) {
+            display_suspended = false;
+            conker::video::apply_display();
+        }
+        return 1;
+    }
+}
+
+void conker::video::apply_display() {
+    SDL_Window* window = conker::frontend::sdl_window();
+    if (window == nullptr) {
+        return;
+    }
+    if (!display_watch_added) {
+        display_watch_added = true;
+        SDL_AddEventWatch(watch_display_focus, nullptr);
+        std::atexit(restore_display);
+    }
+    const uint32_t resolution = graphics_value(extra::redux_resolution);
+    if (resolution == (uint32_t)ReduxResolution::Auto || resolution >= (uint32_t)ReduxResolution::Count) {
+        restore_display(); // Auto: the window and the desktop as they are
+        return;
+    }
+    const int height = (int)redux_resolution_lines[resolution];
+    const bool wide = value(1) == 1;
+    const int width = (wide ? (height * 16 + 8) / 9 : height * 4 / 3) & ~1;
+    if (value(3) == 1) {
+#ifdef _WIN32
+        HWND hwnd = window_handle(window);
+        RECT rect;
+        if (hwnd != nullptr && set_display_mode(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), width, height, &rect)) {
+            SetWindowPos(hwnd, HWND_TOP, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SWP_FRAMECHANGED);
+        }
+#endif
+        return;
+    }
+    restore_display();
+    // Windowed: that size, shrunk to fit the monitor's usable area if it's bigger (same shape).
+    const int display = std::max(SDL_GetWindowDisplayIndex(window), 0);
+    SDL_Rect usable{};
+    int w = width, h = height;
+    if (SDL_GetDisplayUsableBounds(display, &usable) == 0 && usable.w > 0 && usable.h > 0) {
+        const float fit = std::min({ 1.0f, usable.w / (float)w, (usable.h * 0.95f) / (float)h });
+        w = (int)(w * fit);
+        h = (int)(h * fit);
+    }
+    SDL_SetWindowSize(window, w, h);
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display));
+}

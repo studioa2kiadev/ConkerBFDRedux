@@ -62,6 +62,7 @@ add_executable(ConkerBFDReloaded
     src/widescreen.cpp
     src/render_fixes.cpp
     src/free_camera.cpp
+    src/game_menu.cpp
     src/pause_background.cpp
     src/fps_counter.cpp
     src/pad_mappings.cpp

@@ -611,6 +611,73 @@ func = "func_151284C4"
 before_vram = 0x151284C8
 text = "{ extern void conker_mouse_camera(uint8_t*, recomp_context*); conker_mouse_camera(rdram, ctx); }"
 
+# Ours (Conker Redux): the GAME SETTINGS row, VIDEO page and CLOSE GAME? popup
+# (host/src/game_menu.cpp). func_151DE8F0 runs every frame in the front end (it switches on its
+# mode); func_151E3344 is the Options page (it runs once Options is entered, not while its
+# heading is on the carousel); func_151ED430 draws a sprite ($a2 x, $a3 y, still as given after these instructions):
+# the Options page's sprites that ours replace go off screen.
+[[patches.hook]]
+func = "func_151DE8F0"
+before_vram = 0x151DE8F4
+text = "{ extern void conker_menu_front_end(uint8_t*, recomp_context*); conker_menu_front_end(rdram, ctx); }"
+
+# The headings' pages (the front end's mode jump tables in func_151DE8F0): none of them running
+# means the heading carousel is up (the mode itself follows the heading in front of it).
+[[patches.hook]]
+func = "func_151DF1BC"
+before_vram = 0x151DF1C0
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151DF574"
+before_vram = 0x151DF578
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151DFF38"
+before_vram = 0x151DFF3C
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151E0424"
+before_vram = 0x151E0428
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151E09DC"
+before_vram = 0x151E09E0
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151E2284"
+before_vram = 0x151E2288
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151E0B70"
+before_vram = 0x151E0B74
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151E1744"
+before_vram = 0x151E1748
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151E1214"
+before_vram = 0x151E1218
+text = "{ extern void conker_menu_heading_page(uint8_t*, recomp_context*); conker_menu_heading_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151E3344"
+before_vram = 0x151E3348
+text = "{ extern void conker_menu_options_page(uint8_t*, recomp_context*); conker_menu_options_page(rdram, ctx); }"
+
+[[patches.hook]]
+func = "func_151ED430"
+before_vram = 0x151ED43C
+text = "{ extern void conker_menu_sprite(uint8_t*, recomp_context*); conker_menu_sprite(rdram, ctx); }"
+
 # Ours (Conker Redux): once func_1512C490 has built the view, undo the Free Camera's
 # over-the-shoulder shift (host/src/free_camera.cpp).
 [[patches.hook]]

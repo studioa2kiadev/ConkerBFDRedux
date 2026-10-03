@@ -20,6 +20,10 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#   include <Windows.h>
+#endif
+
 #include "recomp.h"
 #include "ultramodern/ultramodern.hpp"
 
@@ -71,8 +75,13 @@ double conker::testing::game_seconds() {
 // Called on every screen refresh (VI).
 extern "C" volatile int rt64_cbfd_log_window; // rt64_rsp.cpp (testing)
 
+namespace {
+    void dump_on_key(uint8_t* rdram);
+}
+
 void conker::testing::on_vi(uint8_t* rdram) {
     uint32_t now = ++vis;
+    dump_on_key(rdram);
     // CONKER_TEST_POKE=seconds:hexaddress:delta: adds delta to the byte at that address then (e.g. player 1's
     // lives, 0x800D2144), to make the game show its HUD (finding the HUD's timers).
     static double poke_at = -1.0; static uint32_t poke_addr = 0; static int poke_delta = 0;
@@ -126,6 +135,33 @@ void conker::testing::on_vi(uint8_t* rdram) {
         while (!std::filesystem::exists(png) && std::chrono::steady_clock::now() < give_up) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
+    }
+}
+
+// CONKER_DUMP_KEY=<folder>: pressing F9 saves the game's memory (8 MB) there as dump<N>.rdram, for
+// finding what a screen (a menu, say) keeps in memory by comparing dumps taken on it.
+namespace {
+    void dump_on_key(uint8_t* rdram) {
+#ifdef _WIN32
+        static const char* folder = std::getenv("CONKER_DUMP_KEY");
+        static bool was_down = false;
+        static int count = 0;
+        if (folder == nullptr || rdram == nullptr) {
+            return;
+        }
+        const bool down = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
+        if (down && !was_down) {
+            const std::filesystem::path path = std::filesystem::path(folder) / ("dump" + std::to_string(++count) + ".rdram");
+            if (FILE* f = std::fopen(path.string().c_str(), "wb")) {
+                std::fwrite(rdram, 1, 8 * 1024 * 1024, f);
+                std::fclose(f);
+                std::printf("[dump] %s\n", path.string().c_str());
+            }
+        }
+        was_down = down;
+#else
+        (void)rdram;
+#endif
     }
 }
 

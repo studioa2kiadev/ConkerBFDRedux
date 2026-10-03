@@ -166,12 +166,20 @@ namespace {
             d->set_background_color(dot_off);
             dots[k] = d;
         }
-        recompui::Label* button = skip_context.create_element<recompui::Label>(root, "L", recompui::LabelStyle::Large);
-        button->set_position(recompui::Position::Absolute);
-        button->set_right(ring_right - 9.0f);
-        button->set_bottom(ring_bottom - 16.0f);
-        button->set_color({ 0xFF, 0xF4, 0xD6, 0xFF });
-        recompui::Label* text = skip_context.create_element<recompui::Label>(root, "Hold to Skip", recompui::LabelStyle::Large);
+        // Conker Redux: Conker's head (the autosave icon's) inside the ring, in place of an "L".
+        std::ifstream file(recompui::file::get_asset_path("save_icon.png"), std::ios::binary);
+        std::vector<char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        if (!bytes.empty()) {
+            constexpr float head = 2.0f * ring_radius - dot_size - 4.0f;
+            recompui::queue_image_from_bytes_file("?/conker/skip_icon", bytes);
+            recompui::Image* face = skip_context.create_element<recompui::Image>(root, "?/conker/skip_icon");
+            face->set_position(recompui::Position::Absolute);
+            face->set_right(ring_right - head / 2);
+            face->set_bottom(ring_bottom - head / 2);
+            face->set_width(head);
+            face->set_height(head);
+        }
+        recompui::Label* text = skip_context.create_element<recompui::Label>(root, "Hold L to Skip", recompui::LabelStyle::Large);
         text->set_position(recompui::Position::Absolute);
         text->set_right(ring_right + ring_radius + 18.0f);
         text->set_bottom(ring_bottom - 16.0f);
