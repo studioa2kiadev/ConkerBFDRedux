@@ -118,7 +118,7 @@ namespace {
 
     // What Classic and Modern set. Classic: the game as it looked, ran and played on the N64 (4:3,
     // 30 fps, native resolution, no smoothing of edges, N64 texture filtering, the full intro, the
-    // game's own camera, no mouse). Modern: widescreen, the display's frame rate, the window's
+    // game's own camera, no mouse). Modern: widescreen, 60 fps, the window's
     // resolution, 4x anti-aliasing, smooth textures, 2D and shading, straight to the save menu, the free
     // camera with auto-follow, and the mouse turning the camera and aiming directly. Settings that
     // are about the player's hands or controller (invert, turning speed, rumble, gyro) are left alone.
@@ -136,7 +136,9 @@ namespace {
             std::vector<PresetSetting> list{
                 { Tab::Graphics, gfx::res_option, e(Resolution::Original), e(Resolution::Auto) },
                 { Tab::Graphics, gfx::ar_option, e(AspectRatio::Original), e(AspectRatio::Expand) },
-                { Tab::Graphics, gfx::rr_option, e(RefreshRate::Original), e(RefreshRate::Display) },
+                // Modern runs at a steady 60 (Conker Redux), not the display's rate.
+                { Tab::Graphics, gfx::rr_option, e(RefreshRate::Original), e(RefreshRate::Manual) },
+                { Tab::Graphics, gfx::rr_manual_value, std::nullopt, V{ 60.0 } },
                 { Tab::Graphics, gfx::msaa_option, e(Antialiasing::None), e(Antialiasing::MSAA4X) },
                 { Tab::Graphics, gfx::hr_option, e(HUDRatioMode::Original), e(HUDRatioMode::Clamp16x9) },
                 { Tab::Graphics, extra::texture_filter, e(TextureFilter::N64), e(TextureFilter::Smooth) },
@@ -265,7 +267,8 @@ namespace {
             "free_camera", "Free Camera",
             "The right stick turns the camera freely around Conker and tilts it up and down; it stays where you "
             "leave it. C-Left or C-Right hands the camera back to the game, and cutscenes, special cameras and "
-            "aiming keep the game's own. With a mouse, set Mouse Sensitivity (General tab) above 0 to do the same "
+            "aiming keep the game's own. Click the right stick (R3) to switch the distance: Standard, Far and Over "
+            "the Shoulder. With a mouse, set Mouse Sensitivity (General tab) above 0 to do the same "
             "with the mouse, and the scroll wheel to zoom.",
             true);
         conker.add_option_change_callback("free_camera",
@@ -356,6 +359,23 @@ namespace {
             set_game_input_description(pad, "Not used by the game.");
         }
     }
+
+    // Xbox-style defaults (RecompFrontend's are N64-style): B is N64 B and backs out of menus, X
+    // takes B's old C-Right, and first-person (C-Up) moves from R3 to D-pad Up, since R3 cycles the
+    // Free Camera's distance (free_camera.cpp). Only new or reset controller profiles get these.
+    void set_default_controls() {
+        using recompinput::GameInput;
+        using recompinput::InputField;
+        using recompinput::set_default_mapping_for_controller;
+        set_default_mapping_for_controller(GameInput::B, { InputField::controller_digital(SDL_CONTROLLER_BUTTON_B) });
+        set_default_mapping_for_controller(GameInput::C_RIGHT, {
+            InputField::controller_analog(SDL_CONTROLLER_AXIS_RIGHTX, true),
+            InputField::controller_digital(SDL_CONTROLLER_BUTTON_X) });
+        set_default_mapping_for_controller(GameInput::C_UP, {
+            InputField::controller_analog(SDL_CONTROLLER_AXIS_RIGHTY, false),
+            InputField::controller_digital(SDL_CONTROLLER_BUTTON_DPAD_UP) });
+        set_default_mapping_for_controller(GameInput::BACK_MENU, { InputField::controller_digital(SDL_CONTROLLER_BUTTON_B) });
+    }
 }
 
 void conker::init_settings() {
@@ -378,6 +398,7 @@ void conker::init_settings() {
     recompui::config::create_graphics_tab();
     add_extra_graphics_options();
     describe_controls();
+    set_default_controls();
     recompui::config::create_controls_tab();
     recompui::config::create_sound_tab();
     conker::sound::add_volume_options();

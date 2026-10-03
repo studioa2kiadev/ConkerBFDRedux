@@ -94,6 +94,31 @@ namespace {
     constexpr float sight_lift_step = 15.0f * 3.14159265358979f / 180.0f;
     constexpr int sight_lift_tries = 4;
     constexpr float lift_ease_seconds = 0.6f;
+    // R3 (Free Camera on) cycles the distance: Standard (the game's own, C-Down and the wheel still
+    // change it), Far, then Over the Shoulder, and back. Far is this much past the controller's
+    // farthest; Over the Shoulder is this near, with the view shifted this far to Conker's right
+    // (both the eye and the point it looks at, only while the view is built). The shift glides in
+    // and out over shoulder_ease_seconds, and shrinks where a wall is closer on that side.
+    constexpr float far_scale = 1.3f;
+    constexpr float shoulder_distance = 150.0f;
+    constexpr float shoulder_offset = 40.0f;
+    constexpr float shoulder_margin = 12.0f;
+    constexpr float shoulder_ease_seconds = 0.2f;
+    // The ground under the eye: probed straight down from ground_probe_up above it. Where the floor
+    // there is within ground_clearance of the eye (or above it), the eye is raised to clear it,
+    // rising over ground_rise_seconds and settling back over ground_settle_seconds, instead of
+    // going into the ground for the game's collision to shove it out in one frame.
+    constexpr float ground_probe_up = 80.0f;
+    constexpr float ground_clearance = 20.0f;
+    constexpr float ground_rise_seconds = 0.08f;
+    constexpr float ground_settle_seconds = 0.4f;
+    // The hover floor: the ground Conker stands on (found straight down from the look-at point, so
+    // it stays put while he jumps), plus this much. The eye never goes lower, wherever it is.
+    constexpr float hover_above_conker_floor = 25.0f;
+    constexpr float floor_probe_below = 160.0f;
+    // Standard (the "mid" distance): the game's own, brought in by this much.
+    constexpr float standard_scale = 0.85f;
+    enum class Distance { Standard, Far, Shoulder };
 
     // Scroll wheel notches since the view last read them (SDL event watch: the
     // frontend's own event loop consumes the events).
@@ -126,7 +151,20 @@ namespace {
         float shown_yaw = 0.0f;         // the yaw the eye was placed at last frame (has_shown_yaw)
         bool has_shown_yaw = false;
         double last_view = 0.0;         // game seconds at the last view
+        Distance distance = Distance::Standard; // R3's choice
+        bool r3_was_down = false;
+        float shoulder = 0.0f;          // 0 to 1: how far the over-the-shoulder shift has glided in
+        float shoulder_room = shoulder_offset; // how far right of Conker is clear this frame
+        float ground_lift = 0.0f;       // units the eye is raised off the ground under it
     } orbit;
+    // The over-the-shoulder shift applied while the view is built (conker_mouse_camera), undone
+    // once it's built (conker_mouse_camera_view_built).
+    struct ViewShift {
+        bool applied = false;
+        gpr camera = 0;
+        float offset[3] = {};
+        float look[3] = {}, eye[3] = {}; // the unshifted look-at point (+0x2BC) and eye (+0x2F8)
+    } view_shift;
     bool was_normal_camera = false; // conker::normal_camera (Camera: Field of View)
 
     float read_float(uint8_t* rdram, gpr base, int32_t offset) {
@@ -265,7 +303,17 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
 
     float mouse_x = 0.0f, mouse_y = 0.0f;
     int notches = 0;
+    bool r3_pressed = false;
     if (!orbit.turned) {
+        // R3: the next distance (Standard, Far, Over the Shoulder).
+        const bool r3_down = conker::free_camera_enabled() &&
+            recompinput::get_input_digital(0, recompinput::InputField::controller_digital(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
+        if (r3_down && !orbit.r3_was_down) {
+            orbit.distance = orbit.distance == Distance::Standard ? Distance::Far
+                : orbit.distance == Distance::Far ? Distance::Shoulder : Distance::Standard;
+            r3_pressed = true;
+        }
+        orbit.r3_was_down = r3_down;
         recompinput::get_mouse_deltas(&mouse_x, &mouse_y);
         notches = wheel_notches.exchange(0);
         if (!conker::mouse_turns_camera()) { // Mouse: Turn the Camera off: the mouse only aims
@@ -305,7 +353,7 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
     const float wanted_distance = std::sqrt(horizontal * horizontal + height * height);
 
     if (!orbit.engaged) {
-        if (mouse_x == 0.0f && mouse_y == 0.0f && notches == 0) {
+        if (mouse_x == 0.0f && mouse_y == 0.0f && notches == 0 && !r3_pressed) {
             return;
         }
         // Take over from where the game's camera was drawn.
@@ -340,7 +388,13 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
     // knows where big posts and beams the collision lets the camera through would block the view.
     // The change glides (orbit.reach) rather than jumps.
     static const bool no_game_zoom = std::getenv("CONKER_CAM_NOZOOM") != nullptr; // (testing)
-    const float zoomed = (wanted_distance < nearest && !no_game_zoom) ? std::min(orbit.wanted, wanted_distance) : orbit.wanted;
+    float chosen = std::max(orbit.wanted * standard_scale, nearest);
+    if (orbit.distance == Distance::Far) {
+        chosen = farthest * far_scale;
+    } else if (orbit.distance == Distance::Shoulder) {
+        chosen = shoulder_distance;
+    }
+    const float zoomed = (wanted_distance < nearest && !no_game_zoom) ? std::min(chosen, wanted_distance) : chosen;
     // Not below the ground at Conker's feet: tilted down that far, the eye comes in along the
     // orbit instead, resting just above the floor and looking up at him (pushed into the ground,
     // the game's collision shoved it back up, and aiming it down again every frame shook the view).
@@ -447,6 +501,41 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
     const float distance = (along >= orbit.reach) ? orbit.reach : std::clamp(along - sight_margin, std::min(sight_nearest, orbit.reach), orbit.reach);
     float target[3];
     for (int i = 0; i < 3; i++) target[i] = look[i] + dir[i] * distance;
+
+    // The ground under the eye: raise it to clear the floor there, gliding, rather than leave it in
+    // the ground for the collision to shove out. A probe stopped where it starts is inside something
+    // (a beam or ceiling just above the eye), so it tells nothing about the floor.
+    {
+        const float probe_from[3] = { target[0], target[1] + ground_probe_up, target[2] };
+        const float down[3] = { 0.0f, -1.0f, 0.0f };
+        const float probe_full = ground_probe_up + ground_clearance + 24.0f; // clear_reach ignores the last 24
+        const float to_floor = clear_reach(rdram, ctx, camera, probe_from, down, probe_full);
+        float lift_needed = 0.0f;
+        if (to_floor < probe_full && to_floor > 1.0f) {
+            lift_needed = std::max(0.0f, (probe_from[1] - to_floor) + ground_clearance - target[1]);
+        }
+        // The hover floor: not below the ground Conker is on (over a pit, nothing is found: no floor).
+        const float under_full = (cy - read_float(rdram, camera, 0x2A8)) + floor_probe_below;
+        const float to_conker_floor = clear_reach(rdram, ctx, camera, look, down, under_full);
+        if (to_conker_floor < under_full && to_conker_floor > 1.0f) {
+            const float hover = (cy - to_conker_floor) + hover_above_conker_floor;
+            lift_needed = std::max(lift_needed, hover - target[1]);
+        }
+        const float ease = lift_needed > orbit.ground_lift ? ground_rise_seconds : ground_settle_seconds;
+        orbit.ground_lift += (lift_needed - orbit.ground_lift) * (1.0f - std::exp(-seconds / ease));
+        target[1] += orbit.ground_lift;
+    }
+
+    // Over the shoulder: glide the shift in or out, and find how far right of Conker is clear.
+    const float shoulder_wanted = orbit.distance == Distance::Shoulder ? 1.0f : 0.0f;
+    orbit.shoulder += (shoulder_wanted - orbit.shoulder) * (1.0f - std::exp(-seconds / shoulder_ease_seconds));
+    if (orbit.shoulder < 0.001f) {
+        orbit.shoulder = 0.0f;
+    } else {
+        const float right[3] = { std::sin(orbit.yaw), 0.0f, -std::cos(orbit.yaw) };
+        const float full = shoulder_offset + shoulder_margin + 24.0f;
+        orbit.shoulder_room = std::max(0.0f, clear_reach(rdram, ctx, camera, look, right, full) - shoulder_margin);
+    }
     static const bool trace_sight = std::getenv("CONKER_CAM_TRACE") != nullptr;
     if (trace_sight) {
         std::printf("[sight] t=%.3f reach %.1f along %.1f lift %.1f deg distance %.1f\n", now, orbit.reach, along, orbit.lift * 57.2958f, distance);
@@ -507,6 +596,34 @@ extern "C" void conker_mouse_camera(uint8_t* rdram, recomp_context* ctx) {
     } else {
         orbit.shown_distance = 0.0f;
     }
+    // Over the shoulder: the eye and the point it looks at move together to Conker's right (so the
+    // view keeps its direction, and Conker's movement with it) while func_1512C490, called just after
+    // this hook, builds the view from them. conker_mouse_camera_view_built puts them back.
+    view_shift.applied = false;
+    if (orbit.engaged && orbit.shoulder > 0.0f) {
+        float look[3], eye[3];
+        for (int i = 0; i < 3; i++) {
+            look[i] = read_float(rdram, camera, 0x2BC + i * 4);
+            eye[i] = read_float(rdram, camera, 0x2F8 + i * 4);
+        }
+        // Right of the view: the eye's direction from the look-at point, turned a quarter to the right.
+        const float ex = eye[0] - look[0], ez = eye[2] - look[2];
+        const float across = std::sqrt(ex * ex + ez * ez);
+        const float amount = std::min(shoulder_offset * orbit.shoulder, orbit.shoulder_room);
+        if (across > 1.0f && amount > 0.0f) {
+            view_shift.applied = true;
+            view_shift.camera = camera;
+            view_shift.offset[0] = ez / across * amount;
+            view_shift.offset[1] = 0.0f;
+            view_shift.offset[2] = -ex / across * amount;
+            for (int i = 0; i < 3; i++) {
+                view_shift.look[i] = look[i];
+                view_shift.eye[i] = eye[i];
+                write_float(rdram, camera, 0x2BC + i * 4, look[i] + view_shift.offset[i]);
+                write_float(rdram, camera, 0x2F8 + i * 4, eye[i] + view_shift.offset[i]);
+            }
+        }
+    }
     static const bool trace = std::getenv("CONKER_CAM_TRACE") != nullptr;
     if (trace && orbit.engaged) {
         std::printf("[cam] t=%.3f target %.1f %.1f %.1f placed %.1f %.1f %.1f collided %.1f %.1f %.1f look %.1f %.1f %.1f shown %.1f direct %d\n",
@@ -527,6 +644,26 @@ extern "C" void conker_mouse_camera(uint8_t* rdram, recomp_context* ctx) {
         orbit.reach = 0.0f;
         orbit.lift = 0.0f;
         orbit.has_shown_yaw = false;
+        orbit.shoulder = 0.0f;
+        orbit.ground_lift = 0.0f;
+    }
+}
+
+// func_151284C4, once func_1512C490 has built the view: undo the over-the-shoulder shift, so the
+// game's camera (and next frame's update) carries on from where it really is. The view copied the
+// eye into the one it drew from (+0x2EC); that's put back too where it holds the shifted eye.
+extern "C" void conker_mouse_camera_view_built(uint8_t* rdram, recomp_context* ctx) {
+    if (!view_shift.applied) {
+        return;
+    }
+    view_shift.applied = false;
+    const gpr camera = view_shift.camera;
+    for (int i = 0; i < 3; i++) {
+        if (read_float(rdram, camera, 0x2EC + i * 4) == view_shift.eye[i] + view_shift.offset[i]) {
+            write_float(rdram, camera, 0x2EC + i * 4, view_shift.eye[i]);
+        }
+        write_float(rdram, camera, 0x2BC + i * 4, view_shift.look[i]);
+        write_float(rdram, camera, 0x2F8 + i * 4, view_shift.eye[i]);
     }
 }
 

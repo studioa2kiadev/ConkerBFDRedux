@@ -611,6 +611,13 @@ func = "func_151284C4"
 before_vram = 0x151284C8
 text = "{ extern void conker_mouse_camera(uint8_t*, recomp_context*); conker_mouse_camera(rdram, ctx); }"
 
+# Ours (Conker Redux): once func_1512C490 has built the view, undo the Free Camera's
+# over-the-shoulder shift (host/src/free_camera.cpp).
+[[patches.hook]]
+func = "func_151284C4"
+before_vram = 0x151284D4
+text = "{ extern void conker_mouse_camera_view_built(uint8_t*, recomp_context*); conker_mouse_camera_view_built(rdram, ctx); }"
+
 [[patches.hook]]
 func = "func_15120158"
 before_vram = 0x1512015C
