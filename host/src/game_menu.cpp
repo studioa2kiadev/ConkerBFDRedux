@@ -5,6 +5,8 @@
 // - The VIDEO page: RESOLUTION, ASPECT, REFRESH RATE, FULLSCREEN and CAMERA FOLLOW (settings.cpp's
 //   conker::video),
 //   up/down to pick a row, left/right (or A) to change it, B back to Options.
+// - GAME SETTINGS on the in-game pause menu too: bottom middle, under the pills; down from them
+//   picks it (lit and pulsing, the pills' glow off), A opens the same VIDEO page.
 // - QUIT GAME, a popup on the heading carousel (front-end mode 0): B opens it, left/right picks
 //   Y or N (N to start with; a knob beside the one picked), A confirms; Y quits.
 //
@@ -265,7 +267,7 @@ namespace {
         "title_video", "title_quit_game", "game_settings",
         "label_resolution", "label_aspect", "label_refresh_rate", "label_full_screen",
         "res_480", "res_720", "res_1080", "res_1440", "res_4k", "aspect_4_3", "aspect_16_9",
-        "hz_30", "hz_60", "off", "on", "yn_y", "yn_slash", "yn_n", "label_camera_follow",
+        "hz_30", "hz_60", "off", "on", "yn_y", "yn_slash", "yn_n", "label_camera_follow", "game_settings_lit",
     };
     struct Word { std::string name; float aspect = 0.0f; }; // aspect 0: not there
     std::vector<Word> words;
@@ -366,11 +368,15 @@ namespace {
     std::atomic<uint32_t> front_end_vi{ 0 };   // the VI the front end last ran in (0: never)
     std::atomic<uint32_t> options_page_vi{ 0 }; // the VI the Options page last drew its rows in
     std::atomic<uint32_t> heading_page_vi{ 0 }; // the VI any heading's page (Options, the games...) last ran in
+    std::atomic<uint32_t> pause_vi{ 0 };        // the VI the pause menu last drew its PAUSED title in
     std::atomic<int> mode{ -1 }, second_mode{ 0 }, options_cursor{ 0 }, cheat_entry{ 0 };
     std::atomic<bool> art_ok{ false };
 
     enum class State : int { None, RowSelected, Page, Popup };
     std::atomic<State> state{ State::None };
+    // Where GAME SETTINGS (and its page) is in use: the Options page, or the pause menu.
+    enum class Where : int { Options, Pause };
+    std::atomic<Where> where{ Where::Options };
     std::atomic<int> page_row{ 0 };            // 0-3
     std::atomic<int> popup_yes{ 0 };           // 1: Y picked
     std::atomic<int> pending_row{ -1 }, pending_dir{ 0 }; // a change for the UI thread to make
@@ -398,6 +404,17 @@ namespace {
         return front_end_running() && mode == 1 && second_mode == 0 && cheat_entry == 0 &&
             seen != 0 && vis.load() - seen < 6;
     }
+    // The pause menu (in a level, Start): its PAUSED title drawn lately (sprite 0x891, seen by the
+    // sprite hook). Its pills: QUIT 0x7FC and CONT.. 0x7D3, each lit by a second sprite drawn over it,
+    // 0x7FE and 0x7D5; the knob between them.
+    constexpr uint32_t pause_title = 0x891, quit_lit = 0x7FE, cont_lit = 0x7D5;
+    bool in_pause() {
+        const uint32_t seen = pause_vi.load();
+        return seen != 0 && vis.load() - seen < 6;
+    }
+
+    bool where_ok(Where w) { return w == Where::Options ? in_options() : in_pause(); }
+
     // The heading carousel: the front end runs and no heading's page has lately (the front end's mode
     // follows whichever heading is in front, so it can't tell).
     bool on_carousel() {
@@ -467,6 +484,11 @@ void conker::game_menu::filter_input(uint16_t* buttons, float* x, float* y) {
     switch (state.load()) {
         case State::None:
             if (in_options() && options_cursor == cheats_row && down) {
+                where = Where::Options;
+                state = State::RowSelected;
+                swallow();
+            } else if (in_pause() && down) {
+                where = Where::Pause; // under the pills: down from either
                 state = State::RowSelected;
                 swallow();
             } else if (on_carousel() && (pressed & button_b)) {
@@ -476,8 +498,22 @@ void conker::game_menu::filter_input(uint16_t* buttons, float* x, float* y) {
             }
             break;
         case State::RowSelected:
-            if (!in_options()) {
+            if (!where_ok(where)) {
                 state = State::None;
+                break;
+            }
+            if (where == Where::Pause) {
+                // Up or B back to the pills; A opens the page; Start still unpauses.
+                if (up || (pressed & button_b)) {
+                    hide_up_until_released = up;
+                    state = State::None;
+                } else if (pressed & button_a) {
+                    page_row = 0;
+                    state = State::Page;
+                }
+                const uint16_t start = *buttons & 0x1000;
+                swallow();
+                *buttons = start;
                 break;
             }
             if (pressed & button_b) {
@@ -502,7 +538,7 @@ void conker::game_menu::filter_input(uint16_t* buttons, float* x, float* y) {
             swallow();
             break;
         case State::Page:
-            if (!in_options()) {
+            if (!where_ok(where)) {
                 state = State::None;
                 break;
             }
@@ -516,7 +552,11 @@ void conker::game_menu::filter_input(uint16_t* buttons, float* x, float* y) {
                 pending_dir = left ? -1 : 1;
                 pending_row = page_row.load();
             }
-            swallow();
+            {
+                const uint16_t start = where == Where::Pause ? (*buttons & 0x1000) : 0; // still unpauses
+                swallow();
+                *buttons = start;
+            }
             break;
         case State::Popup:
             if (pressed & button_b) {
@@ -545,8 +585,11 @@ void conker::game_menu::on_vi(uint8_t* rdram) {
     }
     options_cursor = (int)(uint8_t)MEM_B(0, (gpr)(int32_t)0x8008FE34);
     cheat_entry = (int)(int8_t)MEM_B(0, (gpr)(int32_t)0x8008FEF8);
-    // Out of the front end (into a level): nothing of ours stays up.
-    if (!front_end_running() && state.load() != State::None) {
+    // Out of where it was opened (into a level, or unpaused): nothing of ours stays up.
+    const State s = state.load();
+    if (s != State::None && s != State::Popup && !where_ok(where)) {
+        state = State::None;
+    } else if (s == State::Popup && !front_end_running()) {
         state = State::None;
     }
 }
@@ -570,6 +613,20 @@ extern "C" void conker_menu_options_page(uint8_t* rdram, recomp_context* ctx) {
 // func_151ED430 (draws a sprite), with its arguments as given: $a2 x, $a3 y. The Options page's
 // sprites that ours replace go off screen.
 extern "C" void conker_menu_sprite(uint8_t* rdram, recomp_context* ctx) {
+    const uint32_t tex = (uint32_t)MEM_W(0, ctx->r5);
+    if (tex == pause_title) {
+        pause_vi = std::max<uint32_t>(vis.load(), 1);
+    }
+    if (in_pause() && where == Where::Pause) {
+        // The pause menu: all of it under the VIDEO page; just the pills' glow while GAME SETTINGS
+        // is picked (so it's the one thing that looks picked).
+        const State s = state.load();
+        if (s == State::Page || (s == State::RowSelected && (tex == quit_lit || tex == cont_lit))) {
+            ctx->r6 = 900;
+            ctx->r7 = 900;
+        }
+        return;
+    }
     if (!in_options()) {
         return;
     }
@@ -592,6 +649,7 @@ namespace {
     constexpr float row_height = 0.045f;                 // GAME SETTINGS
     constexpr float knob_size = 0.13f, knob_gap = 0.075f;
     constexpr float cheats_knob_half = 0.233f;           // the game's knobs on CHEATS, either side of centre
+    constexpr float pause_row_y = 0.80f;                 // GAME SETTINGS on the pause menu, under the pills
     constexpr float knob_glide_seconds = 0.045f;         // the knobs ease to a new row (as the game's glide)
     constexpr float title_y = 0.32f, title_height = 0.085f;
     constexpr float page_first_y = 0.43f, page_step = 0.09f, page_height = 0.05f;
@@ -767,11 +825,15 @@ void conker::game_menu::update() {
     }
 
     const bool options = in_options();
+    const bool paused = in_pause();
     const State s = state.load();
-    const bool show_row = options && s != State::Page;
-    const bool show_page = options && s == State::Page;
+    const Where open_in = where.load();
+    const bool in_page = s == State::Page && where_ok(open_in);
+    const bool show_row = options && !in_page;
+    const bool show_pause_row = paused && !in_page;
+    const bool show_page = in_page;
     const bool show_popup = s == State::Popup;
-    if (!show_row && !show_page && !show_popup) {
+    if (!show_row && !show_pause_row && !show_page && !show_popup) {
         knobs_shown = false;
         if (created && recompui::is_context_shown(context)) {
             recompui::hide_context(context);
@@ -807,6 +869,14 @@ void conker::game_menu::update() {
 
     context.open();
     hide_all();
+    if (show_pause_row) {
+        // Bottom middle, under the knob between QUIT and CONT..; lit and gently pulsing when picked.
+        const bool picked = s == State::RowSelected && open_in == Where::Pause;
+        const float pulse = picked ? 1.0f + 0.04f * std::sin((float)(now_ms() % 100000) * 0.006f) : 1.0f;
+        const float height = row_height * 1.6f * pulse * H;
+        place_word(row_word, picked && word_aspect("game_settings_lit") > 0.0f ? "game_settings_lit" : "game_settings",
+            cx, pause_row_y * H, height, 0.5f);
+    }
     if (show_row) {
         const float y = (cheats_y + row_step) * H, height = row_height * H;
         float width = place_word(row_word, "game_settings", cx, y, height * 1.6f, 0.5f);
@@ -815,7 +885,7 @@ void conker::game_menu::update() {
             width = text_width(label, height);
             place_text(row_text, label, cx - width / 2, y, height);
         }
-        if (s == State::RowSelected) {
+        if (s == State::RowSelected && open_in == Where::Options) {
             knob_target = { y, width / 2 + knob_gap * H, knob_size * H };
             have_target = true;
         } else if (now_ms() < handing_back_until.load()) {

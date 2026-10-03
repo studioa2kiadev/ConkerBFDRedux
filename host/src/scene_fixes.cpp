@@ -153,7 +153,7 @@ extern "C" void conker_scene_widen_cull_scale(uint8_t* rdram, recomp_context* ct
 namespace {
     enum class Skip { Off, Logos, Bar, PressingStart, Done };
     std::atomic<Skip> skip_state{ Skip::Off };
-    constexpr uint32_t legal_screens = 0x25, opening = 0x21, bar = 0x1D;
+    constexpr uint32_t legal_screens = 0x25, bar = 0x1D;
     constexpr int32_t room_timer = (int32_t)0x800E0A90; // refreshes since the room began
     constexpr int32_t logo_frames_before_skip = 10;     // earlier, the bar never loads (the mod's measurement)
     constexpr int32_t press_start_at = 20, show_menu_at = 60; // bar room timer
@@ -174,19 +174,9 @@ extern "C" void conker_room_change(uint8_t* rdram, recomp_context* ctx) {
         std::printf("[room] %02X -> %02X\n", (uint32_t)MEM_W(0, current_room), room);
     }
     Skip state = skip_state;
-    static uint32_t last_room = 0xFFFFFFFF;
-    const uint32_t from = last_room;
-    last_room = room;
     if (state == Skip::Off && room == legal_screens && conker::skip_intro()) {
         skip_state = Skip::Logos;
         ultramodern::set_screen_blanked(true);
-    } else if (state == Skip::Off && room == bar && from == opening && !conker::skip_intro() &&
-               std::getenv("CONKER_NO_OPENING_FIX") == nullptr) {
-        // Conker Redux: the full opening played (Skip Intro off). Leaving it there, the menu came up
-        // half asleep (the carousel wouldn't turn until a game slot was opened and closed), so it's
-        // ended the way Skip Intro ends: the bar's state set up and Start pressed (which skips
-        // Conker's walk-in, as any button there would). Once, on the way in from the opening.
-        skip_state = Skip::Bar;
     } else if (state != Skip::Off && state != Skip::Done && room != legal_screens && room != bar) {
         finish_skip(); // somewhere unexpected: just show it
     }

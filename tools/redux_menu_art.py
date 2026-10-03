@@ -46,6 +46,7 @@ SEPARATE = {
     'game_settings': ('redux_game_settings.png', TITLE_ROWS),
     'label_camera_follow': ('redux_camera_follow.png', LABEL_ROWS),
 }
+LIT = { 'game_settings' } # these also get a highlighted <name>_lit.png
 MIN_BLOB = 40   # kept pixels in a group smaller than this are specks (JPEG noise, stray marks): removed
 # Single digits for 30 and 60 (the 0 is the last of 1080's: its left edge is cut where the 8 met
 # it, so the 3 or 6 goes over that edge, as the atlas's digits overlap).
@@ -123,15 +124,31 @@ def number(digit, zero):
     return out
 
 
-def crunch(rgba, rows, scale=4):
+def crunch(rgba, rows, scale=4, lit=False):
+    """lit: the highlighted version (the pause menu's GAME SETTINGS when picked): brighter, with a
+    one-pixel light yellow glow round it."""
     im = Image.fromarray(rgba, 'RGBA').convert('RGBa') # premultiplied: no white bleeds in
     width = max(1, round(im.width * rows / im.height))
-    small = np.asarray(im.resize((width, rows), Image.LANCZOS).convert('RGBA')).copy()
+    if lit:
+        width += 2 # room for the glow
+    small = np.zeros((rows + (2 if lit else 0), width, 4), np.uint8)
+    inner = np.asarray(im.resize((width - (2 if lit else 0), rows), Image.LANCZOS).convert('RGBA'))
+    small[(1 if lit else 0):(1 if lit else 0) + rows, (1 if lit else 0):(1 if lit else 0) + inner.shape[1]] = inner
     alpha = small[..., 3] >= 128
+    if lit:
+        rgb = small[..., :3].astype(np.int32)
+        small[..., :3] = np.clip(rgb * 5 // 4 + 24, 0, 255).astype(np.uint8)
+        ring = np.zeros_like(alpha)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                ring |= np.roll(np.roll(alpha, dy, 0), dx, 1)
+        ring &= ~alpha
+        small[ring] = (255, 250, 190, 255)
+        alpha |= ring
     small[..., :3] = (small[..., :3] >> 3 << 3) | (small[..., :3] >> 5) # 5 bits a channel
     small[..., 3] = np.where(alpha, 255, 0)
     small[~alpha, :3] = 0
-    return Image.fromarray(small, 'RGBA').resize((width * scale, rows * scale), Image.NEAREST)
+    return Image.fromarray(small, 'RGBA').resize((small.shape[1] * scale, small.shape[0] * scale), Image.NEAREST)
 
 
 def main():
@@ -141,11 +158,14 @@ def main():
         crunch(keyed(atlas, box), rows).save(os.path.join(OUT, name + '.png'))
     for name, (file_name, rows) in SEPARATE.items():
         art = np.asarray(Image.open(os.path.join(ROOT, 'host', 'art', file_name)).convert('RGB'))
-        crunch(keyed(art, (0, 0, art.shape[1] - 1, art.shape[0] - 1)), rows).save(os.path.join(OUT, name + '.png'))
+        word = keyed(art, (0, 0, art.shape[1] - 1, art.shape[0] - 1))
+        crunch(word, rows).save(os.path.join(OUT, name + '.png'))
+        if name in LIT:
+            crunch(word, rows, lit=True).save(os.path.join(OUT, name + '_lit.png'))
     zero = keyed(atlas, DIGIT_0)
     crunch(number(keyed(atlas, DIGIT_3), zero), LABEL_ROWS).save(os.path.join(OUT, 'hz_30.png'))
     crunch(number(keyed(atlas, DIGIT_6), zero), LABEL_ROWS).save(os.path.join(OUT, 'hz_60.png'))
-    print(f'{len(WORDS) + len(SEPARATE) + 2} pictures written to {os.path.normpath(OUT)}')
+    print(f'{len(WORDS) + len(SEPARATE) + len(LIT) + 2} pictures written to {os.path.normpath(OUT)}')
 
 
 main()
