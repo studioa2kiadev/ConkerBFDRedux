@@ -18,7 +18,11 @@ namespace recomp::config {
 struct _SDL_GameController;
 
 namespace conker {
-    inline constexpr const char* program_name = "Conker BFD: Reloaded";
+    inline constexpr const char* program_name = "Conker Redux";
+    // The folder its settings and saves are kept in (%LOCALAPPDATA%\ConkerRedux on Windows), and
+    // Conker BFD: Reloaded's, which the first run starts from if it was played on this PC.
+    inline constexpr const char8_t* program_id = u8"ConkerRedux";
+    inline constexpr const char8_t* reloaded_program_id = u8"ConkerBFDReloaded";
     inline constexpr uint64_t us_rom_hash = 0x23FBBA2DBCF2FD8EULL; // XXH3-64 of the US ROM (.z64)
     // The part of the ROM holding the game's code (.init, .game, .debugger: 0x1000 to the end of
     // .debugger), and its XXH3-64 in the US ROM. ROM hacks that leave it alone (only the game's

@@ -234,8 +234,8 @@ namespace {
         conker.add_enum_option(
             "experience", "Experience",
             "Classic plays the game as it was on the N64: 4:3, 30 frames per second, the original resolution, "
-            "the full intro and the game's own camera. Modern picks the recommended settings: widescreen, your "
-            "display's frame rate, full resolution, anti-aliasing, smooth textures and shading, straight to the save menu, "
+            "the full intro and the game's own camera. Modern picks the recommended settings: widescreen, 60 "
+            "frames per second, full resolution, anti-aliasing, smooth textures and shading, straight to the save menu, "
             "the free camera, the aiming crosshair and mouse control. While Classic or Modern is picked, the settings it "
             "decides are greyed out; pick Custom to change them yourself. Invert, turning speed, rumble and gyro stay "
             "as you set them.",

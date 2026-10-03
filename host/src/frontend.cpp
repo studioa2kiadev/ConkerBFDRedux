@@ -680,7 +680,7 @@ ultramodern::input::connected_device_info_t conker::frontend::device_info(int co
 
 void conker::frontend::init(recomp::GameEntry& game) {
     recompui::programconfig::set_program_name(program_name);
-    recompui::programconfig::set_program_id(u8"ConkerBFDReloaded");
+    recompui::programconfig::set_program_id(conker::program_id);
     supported_games.push_back(game);
     recompui::register_launcher_init_callback(init_launcher);
     recompui::register_launcher_update_callback(update_launcher);
