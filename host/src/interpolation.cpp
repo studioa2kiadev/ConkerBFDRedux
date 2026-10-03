@@ -18,6 +18,9 @@
 // so the shadow slides with the character instead of stepping at the game's rate.
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
 
 #include "recomp.h"
 
@@ -96,6 +99,29 @@ extern "C" void conker_object_matrix_group_end(uint8_t* rdram, recomp_context* c
     ctx->r2 = dl;
 }
 
+namespace {
+    // Testing (CONKER_SHADOW_PROBE): the commands a shadow writes, to see where its texture comes from.
+    gpr shadow_dl_start = 0;
+    uint32_t shadow_index = 0;
+
+    void probe_shadow_commands(uint8_t* rdram, gpr start, gpr end) {
+        static const bool probe = std::getenv("CONKER_SHADOW_PROBE") != nullptr;
+        static int calls = 0;
+        if (!probe || (calls++ % 90) != 0) {
+            return;
+        }
+        std::printf("[shadow %u] %u commands\n", shadow_index, (uint32_t)((end - start) / 8));
+        for (gpr dl = start; dl < end; dl += 8) {
+            const uint32_t w0 = (uint32_t)MEM_W(0, dl), w1 = (uint32_t)MEM_W(4, dl);
+            const uint32_t op = w0 >> 24;
+            if (op == 0xFD || op == 0xFF || op == 0xDE || op == 0xE0 || op == 0x64) {
+                std::printf("  %08X %08X\n", w0, w1);
+            }
+        }
+        std::fflush(stdout);
+    }
+}
+
 // func_15186794, after its first instruction: $a0 is where it writes its first
 // command, $a1 the shadow's index.
 extern "C" void conker_shadow_matrix_group_begin(uint8_t* rdram, recomp_context* ctx) {
@@ -103,11 +129,80 @@ extern "C" void conker_shadow_matrix_group_begin(uint8_t* rdram, recomp_context*
     gpr dl = ctx->r4;
     put_group(rdram, dl, 0x53480000u | shadow, shadow_group_params);
     ctx->r4 = dl;
+    shadow_dl_start = dl;
+    shadow_index = shadow;
+}
+
+namespace {
+    // A silhouette: the character drawn from the light's point of view into the shadow's own small
+    // image, which the ground is then textured with. Interpolated like the character itself (its
+    // matrices and the vertices the game bends on the CPU), so the shadow's shape changes at the
+    // display's rate instead of stepping at the game's. The game draws it through func_1502CCFC, whose
+    // own object group leaves its components automatic, which RT64 appears to take from the group around
+    // it: inside the shadow's (matrices and vertices skipped), the silhouette was never interpolated.
+    constexpr uint32_t silhouette_group_params = object_group_params;
+    // A set-color-image this narrow is a shadow's image, not the screen (the game's are 64 wide).
+    constexpr uint32_t silhouette_max_width = 128;
+
+    // Rewrites the commands a shadow wrote (start to end) with each silhouette wrapped in its own
+    // group, nested in the shadow's: opened after each set-color-image to a shadow's image, closed
+    // before the next set-color-image (back to the screen). Returns the new end.
+    gpr wrap_silhouettes(uint8_t* rdram, gpr start, gpr end) {
+        thread_local std::vector<uint32_t> in, out;
+        in.clear();
+        out.clear();
+        for (gpr dl = start; dl < end; dl += 4) {
+            in.push_back((uint32_t)MEM_W(0, dl));
+        }
+        // Moving these commands is only safe if nothing points into them (vertices, matrices or display
+        // lists the game might have put among them): if anything does, the shadow is left as it is.
+        const uint32_t lo = (uint32_t)start & 0x1FFFFFFF, hi = (uint32_t)end & 0x1FFFFFFF;
+        for (size_t i = 0; i + 1 < in.size(); i += 2) {
+            const uint32_t address = in[i + 1] & 0x1FFFFFFF;
+            if ((address >= lo) && (address < hi)) {
+                static const bool probe = std::getenv("CONKER_SHADOW_PROBE") != nullptr;
+                if (probe) {
+                    std::printf("[shadow %u] not wrapped: %08X %08X points inside its own commands\n", shadow_index, in[i], in[i + 1]);
+                }
+                return end;
+            }
+        }
+        auto put = [](uint32_t w0, uint32_t w1) { out.push_back(w0); out.push_back(w1); };
+        uint32_t segment = 0;
+        bool open = false;
+        for (size_t i = 0; i + 1 < in.size(); i += 2) {
+            const uint32_t w0 = in[i], w1 = in[i + 1];
+            const bool set_color_image = (w0 >> 24) == 0xFF;
+            if (set_color_image && open) {
+                put((rt64_extended_opcode << 24) | g_ex_popmatrixgroup_v1, 1);
+                open = false;
+            }
+            put(w0, w1);
+            if (set_color_image && (w0 & 0xFFF) + 1 <= silhouette_max_width) {
+                const uint32_t id = 0x53590000u | ((shadow_index & 0xFF) << 8) | (segment++ & 0xFF);
+                put((rt64_hook_opcode << 24) | rt64_hook_magic, (rt64_hook_op_enable << 28) | rt64_extended_opcode);
+                put((rt64_extended_opcode << 24) | g_ex_matrixgroup_v1, id);
+                put(silhouette_group_params, 0);
+                open = true;
+            }
+        }
+        if (open) {
+            put((rt64_extended_opcode << 24) | g_ex_popmatrixgroup_v1, 1);
+        }
+        gpr dl = start;
+        for (uint32_t word : out) {
+            MEM_W(0, dl) = (int32_t)word;
+            dl += 4;
+        }
+        return dl;
+    }
 }
 
 // At its return: $v0 is the end of what it wrote.
 extern "C" void conker_shadow_matrix_group_end(uint8_t* rdram, recomp_context* ctx) {
     gpr dl = ctx->r2;
+    dl = wrap_silhouettes(rdram, shadow_dl_start, dl);
+    probe_shadow_commands(rdram, shadow_dl_start, dl);
     put_pop(rdram, dl);
     ctx->r2 = dl;
 }

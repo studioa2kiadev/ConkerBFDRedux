@@ -23,8 +23,135 @@ index 3db0968..ada3267 100644
              rsp->modifyGeometryMode(0, requested & ~(G_LIGHTING | G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR));
          }
  
+diff --git a/src/hle/rt64_game_frame.cpp b/src/hle/rt64_game_frame.cpp
+index db00961..d008ecc 100644
+--- a/src/hle/rt64_game_frame.cpp
++++ b/src/hle/rt64_game_frame.cpp
+@@ -9,6 +9,16 @@
+ 
+ #include "xxHash/xxh3.h"
+ 
++// Conker Redux testing: RT64_SHADOW_LOG=<file> writes one line per shadow transform matched: its vertex
++// counts and which fit (if any) interpolated its texture coordinates.
++static FILE *shadowLogFile() {
++    static FILE *file = []() -> FILE * {
++        const char *path = getenv("RT64_SHADOW_LOG");
++        return (path != nullptr) ? fopen(path, "w") : nullptr;
++    }();
++    return file;
++}
++
+ namespace RT64 {
+     // GameFrame
+     
+@@ -795,7 +805,13 @@ namespace RT64 {
+         // Its vertices can't be paired with last frame's, so last frame's projection is fitted instead (a
+         // perspective map from position to texture coordinates, by least squares, in world space) and each
+         // vertex's coordinates last frame are taken from it.
++        if ((curGroup.texcoordInterpolation == G_EX_COMPONENT_INTERPOLATE) && (curGroup.vertexInterpolation == G_EX_COMPONENT_SKIP) && (shadowLogFile() != nullptr) && !((curVertexCount > 0) && (prevVertexCount >= 3))) {
++            fprintf(shadowLogFile(), "shadow cur=%u prev=%u skipped\n", curVertexCount, prevVertexCount);
++        }
+         if ((curGroup.texcoordInterpolation == G_EX_COMPONENT_INTERPOLATE) && (curGroup.vertexInterpolation == G_EX_COMPONENT_SKIP) && (curVertexCount > 0) && (prevVertexCount >= 3)) {
++            const char *shadowPath = "none";
++            double shadowPerspResidual = -1.0;
++            bool shadowCovered = false;
+             const float *prevLocal = &prevWorkload.drawData.posFloats[prevVertexIndex * 3];
+             const float *prevTc = &prevWorkload.drawData.tcFloats[prevVertexIndex * 2];
+             const float *curLocal = &curWorkload.drawData.posFloats[curVertexIndex * 3];
+@@ -882,6 +898,36 @@ namespace RT64 {
+                 }
+             }
+ 
++            // Last frame's coordinates for this frame's vertices, from a map fitted to last frame's: taken as the
++            // texture coordinates' velocity unless a vertex would move more than a quarter of the texture (the
++            // shadow moves a few texels a frame: such a step means the map doesn't hold there).
++            bool shadowInterpolated = false;
++            auto applyMap = [&](auto &&project, double spread) {
++                const double maxStep = 0.25 * spread;
++                bool plausible = true;
++                for (uint32_t i = 0; (i < curVertexCount) && plausible; i++) {
++                    double predicted[2];
++                    project(&curPos[i * 3], predicted);
++                    for (int b = 0; b < 2; b++) {
++                        // Last frame's coordinates were clipped to the texture's edges too.
++                        const double previous = std::clamp(predicted[b], double(tcMin[b]), double(tcMax[b]));
++                        const double step = curTc[i * 2 + b] - previous;
++                        plausible = plausible && std::isfinite(step) && (fabs(step) <= maxStep);
++                        curTcVel[i * 2 + b] = float(step);
++                    }
++                }
++
++                if (plausible) {
++                    modifiedBuffers.texcoordVelocity = true;
++                    shadowInterpolated = true;
++                }
++                else {
++                    for (uint32_t i = 0; i < curVertexCount * 2; i++) {
++                        curTcVel[i] = 0.0f;
++                    }
++                }
++            };
++
+             if (solved) {
+                 double coef[11];
+                 for (int r = 0; r < 11; r++) coef[r] = normal[r][11] / normal[r][r];
+@@ -892,7 +938,9 @@ namespace RT64 {
+                     out[1] = (coef[4] * q[0] + coef[5] * q[1] + coef[6] * q[2] + coef[7]) / w;
+                 };
+ 
+-                // Only if last frame's coordinates fit it closely (on average within 1% of the texture's extent).
++                // Only if last frame's coordinates fit it closely: on average within 2.5% of the texture's extent
++                // (Conker Redux: was 1%. Logged in play, moving shadows fit within 0.5% typically, but runs of
++                // frames came in at 1.0-1.4% and stepped at the game's rate; the step check below still holds).
+                 double residual = 0.0;
+                 for (uint32_t i = 0; i < prevVertexCount; i++) {
+                     double predicted[2];
+@@ -912,33 +960,18 @@ namespace RT64 {
+                     }
+                 }
+                 const bool covered = (used >= 12) && ((usedMax[0] - usedMin[0]) > 0.25 * spread) && ((usedMax[1] - usedMin[1]) > 0.25 * spread);
+-                if (covered && (spread > 0.0) && (residual <= 0.01 * spread)) {
+-                    // The shadow moves a few texels a frame: a vertex whose coordinates would move more than a
+-                    // quarter of the texture means the map doesn't hold there, and the frame is drawn as it is.
+-                    const double maxStep = 0.25 * spread;
+-                    bool plausible = true;
+-                    for (uint32_t i = 0; (i < curVertexCount) && plausible; i++) {
+-                        double predicted[2];
+-                        project(&curPos[i * 3], predicted);
+-                        for (int b = 0; b < 2; b++) {
+-                            // Last frame's coordinates were clipped to the texture's edges too.
+-                            const double previous = std::clamp(predicted[b], double(tcMin[b]), double(tcMax[b]));
+-                            const double step = curTc[i * 2 + b] - previous;
+-                            plausible = plausible && std::isfinite(step) && (fabs(step) <= maxStep);
+-                            curTcVel[i * 2 + b] = float(step);
+-                        }
+-                    }
+-
+-                    if (plausible) {
+-                        modifiedBuffers.texcoordVelocity = true;
+-                    }
+-                    else {
+-                        for (uint32_t i = 0; i < curVertexCount * 2; i++) {
+-                            curTcVel[i] = 0.0f;
+-                        }
+-                    }
++                shadowCovered = covered;
++                shadowPerspResidual = (spread > 0.0) ? residual / spread : -1.0;
++                if (covered && (spread > 0.0) && (residual <= 0.025 * spread)) {
++                    applyMap(project, spread);
++                    shadowPath = shadowInterpolated ? "perspective" : "perspective-implausible";
+                 }
+             }
++
++            if (shadowLogFile() != nullptr) {
++                fprintf(shadowLogFile(), "shadow cur=%u prev=%u covered=%d persp=%.5f -> %s\n", curVertexCount, prevVertexCount, shadowCovered ? 1 : 0, shadowPerspResidual, shadowPath);
++                fflush(shadowLogFile());
++            }
+         }
+         else if ((curGroup.texcoordInterpolation != G_EX_COMPONENT_SKIP) && (curVertexCount == prevVertexCount)) {
+             const std::vector<float> &curTcFloats = curWorkload.drawData.tcFloats;
 diff --git a/src/hle/rt64_interpreter.cpp b/src/hle/rt64_interpreter.cpp
-index dccaa87..0ea98c1 100644
+index dccaa87..12cee69 100644
 --- a/src/hle/rt64_interpreter.cpp
 +++ b/src/hle/rt64_interpreter.cpp
 @@ -4,6 +4,9 @@
@@ -41,7 +168,7 @@ index dccaa87..0ea98c1 100644
              }
  
              UCode.textAddress = maskedTextAddress;
-+            if (getenv("RT64_UCODE_LOG") != nullptr) { printf("[ucode] text=%08X data=%08X\n", maskedTextAddress, maskedDataAddress); FILE *f = fopen("C:/ConkerRecompWin/snaps/ucode_dump.bin", "wb"); if (f != nullptr) { fwrite(&state->RDRAM[maskedTextAddress], 1, 0x2000, f); fclose(f); } } // testing
++            if (getenv("RT64_UCODE_LOG") != nullptr) { printf("[ucode] text=%08X data=%08X\n", maskedTextAddress, maskedDataAddress); FILE *f = fopen("C:/dev/ConkerRecompWin/snaps/ucode_dump.bin", "wb"); if (f != nullptr) { fwrite(&state->RDRAM[maskedTextAddress], 1, 0x2000, f); fclose(f); } } // testing
              UCode.dataAddress = maskedDataAddress;
          }
  
