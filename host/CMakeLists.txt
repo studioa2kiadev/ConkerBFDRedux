@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 # Conker BFD: Reloaded -- the program (Windows with MSVC, Linux with GCC or Clang).
-# Dependencies (C:\ConkerRecompWin\setup_deps.bat): N64ModernRuntime, rt64 and
+# Dependencies (C:\dev\ConkerRecompWin\setup_deps.bat): N64ModernRuntime, rt64 and
 # RecompFrontend at the versions CBFD-Recompiled uses, with its patches (patches/).
 # The recompiled game code is recomp/out.
 # Build setup adapted from CBFD-Recompiled's host/CMakeLists.txt (MIT, Sean Ciaschi).

@@ -1,0 +1,41 @@
+diff --git a/conker/src/init_50A0.c b/conker/src/init_50A0.c
+index 21a3d36..8c2a871 100644
+--- a/conker/src/init_50A0.c
++++ b/conker/src/init_50A0.c
+@@ -71,7 +71,7 @@ void func_100052A0(s32 arg0) {
+         for (i = 0; i < 4; i++) { // 4 controllers?
+             if (D_800BE944[i])
+             {
+-                _MakeMotorData(&D_800BE900, &D_800BE760[i], i);
++                osMotorInit(&D_800BE900, &D_800BE760[i], i);
+                 osMotorStop(&D_800BE760[i]); // macro for __osMotorAccess
+                 D_800BE948[i] = 0;
+             }
+diff --git a/conker/symbol_addrs.us.txt b/conker/symbol_addrs.us.txt
+index 31e337f..230379a 100644
+--- a/conker/symbol_addrs.us.txt
++++ b/conker/symbol_addrs.us.txt
+@@ -9,8 +9,8 @@ osCreateThread                  = 0x100037F0;
+ allocate_memory                 = 0x10003C40;
+ osMotorStop                     = 0x10005570;
+ osMotorStart                    = 0x100056A0;
+-_MakeMotorData                  = 0x100057E0;
+-osMotorInit                     = 0x10005948;
++osMotorInit                     = 0x100057E0;
++_MakeMotorData                     = 0x10005948;
+ __osCleanupThread               = 0x10007BF8;
+ osMapTLBRdb                     = 0x10008120;
+ alHeapInit                      = 0x10012820;
+@@ -267,3 +267,12 @@ D_80091A30 = 0x80091A30; // type:label
+ D_80091AB8 = 0x80091AB8; // type:label
+ func_16000B14 = 0x16000B14; // type:func
+ D_1600487C = 0x1600487C; // type:label
++
++// Local (Conker Redux build): names from CBFD-Recompiled's decomp fork, so N64Recomp
++// skips these libultra copies like the originals instead of translating them.
++osContInit2                     = 0x151EF090;
++osSetTimer2                     = 0x151EF9C0;
++__osSiRawReadIo                 = 0x10026700;
++osEepromProbe                   = 0x151DD460;
++__osEepStatus                   = 0x151DD710;
++__osSiRawWriteIo                = 0x10026750;

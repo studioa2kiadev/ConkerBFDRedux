@@ -51,11 +51,11 @@ def to_windows(path):
 
 def main():
     src, dst = sys.argv[1], sys.argv[2]
-    exe = sys.argv[sys.argv.index('--exe') + 1] if '--exe' in sys.argv else '/mnt/c/ConkerRecompWin/tools/realesrgan/realesrgan-ncnn-vulkan.exe'
+    exe = sys.argv[sys.argv.index('--exe') + 1] if '--exe' in sys.argv else '/mnt/c/dev/ConkerRecompWin/tools/realesrgan/realesrgan-ncnn-vulkan.exe'
     model = sys.argv[sys.argv.index('--model') + 1] if '--model' in sys.argv else 'realesrgan-x4plus-anime'
     os.makedirs(dst, exist_ok=True)
     # The upscaler runs on Windows: work in a folder it can reach.
-    work = tempfile.mkdtemp(prefix='icons_', dir='/mnt/c/ConkerRecompWin/tools/realesrgan')
+    work = tempfile.mkdtemp(prefix='icons_', dir='/mnt/c/dev/ConkerRecompWin/tools/realesrgan')
     rgb_in, a_in, rgb_out, a_out = (os.path.join(work, n) for n in ('rgb_in', 'a_in', 'rgb_out', 'a_out'))
     for d in (rgb_in, a_in, rgb_out, a_out):
         os.makedirs(d)

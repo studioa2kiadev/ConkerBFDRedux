@@ -9,7 +9,7 @@ from PIL import Image
 a, b, bases, n, step = sys.argv[1], sys.argv[2], [int(x) for x in sys.argv[3].split(',')], int(sys.argv[4]), int(sys.argv[5])
 
 def middle43(run, t):
-    im = np.asarray(Image.open(f'/mnt/c/ConkerRecompWin/snaps/ab/{run}/t{t}.png').convert('RGB')).astype(float)
+    im = np.asarray(Image.open(f'/mnt/c/dev/ConkerRecompWin/snaps/ab/{run}/t{t}.png').convert('RGB')).astype(float)
     h, w, _ = im.shape
     cw = int(round(h * 4 / 3)); x0 = (w - cw) // 2
     return im[:, x0:x0 + cw]

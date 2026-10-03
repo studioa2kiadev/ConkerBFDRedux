@@ -4,10 +4,10 @@
 #   tools/testing/uiclick.sh NAME "x,y;x,y;..." "sec;sec;..." [snap secs, comma-separated] [run secs]
 # Positions are in the 1618x947 window (launcher Settings button 1478,753, twice; Conker tab
 # 142,122; Classic 128,216; Modern 232,216; "ESC" presses Escape). GAME=1 starts straight into the
-# game (Skip Intro) instead of the launcher. Pictures and log in C:\ConkerRecompWin\snaps\ui\NAME.
+# game (Skip Intro) instead of the launcher. Pictures and log in C:\dev\ConkerRecompWin\snaps\ui\NAME.
 set -u
 name=$1; points=$2; delays=$3; snaps=${4:-}; run=${5:-40}
-W=/mnt/c/ConkerRecompWin
+W=/mnt/c/dev/ConkerRecompWin
 CFG=$(ls -d /mnt/c/Users/*/AppData/Local/ConkerBFDReloaded | head -1)
 out=$W/snaps/ui/$name; rm -rf "$out"; mkdir -p "$out"
 B=$(mktemp -d)
@@ -24,9 +24,9 @@ trap 'exit 130' INT TERM HUP
 taskkill.exe /F /IM ConkerBFDReloaded.exe >/dev/null 2>&1; sleep 1
 before=$(wc -c < "$W/host/build/crash.log" 2>/dev/null || echo 0)
 args=""; [ -n "${GAME:-}" ] && args="--seconds $((run + 30))"
-(cmd.exe /c "set CONKER_SKIP_INTRO=1&& C:\\ConkerRecompWin\\host\\build\\ConkerBFDReloaded.exe $args > C:\\ConkerRecompWin\\snaps\\ui\\$name\\run.log 2>&1" >/dev/null 2>&1 &)
-[ -n "$snaps" ] && (timeout $((run + 10)) powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\ConkerRecompWin\snap.ps1' -Proc ConkerBFDReloaded -AtList "$snaps" -Out "C:\\ConkerRecompWin\\snaps\\ui\\$name" >/dev/null 2>&1 &)
-timeout $((run + 10)) powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\ConkerRecompWin\click.ps1' -Points "$points" -Delays "$delays" 2>&1 | tr -d '\r' | tail -3
+(cmd.exe /c "set CONKER_SKIP_INTRO=1&& C:\\dev\\ConkerRecompWin\\host\\build\\ConkerBFDReloaded.exe $args > C:\\dev\\ConkerRecompWin\\snaps\\ui\\$name\\run.log 2>&1" >/dev/null 2>&1 &)
+[ -n "$snaps" ] && (timeout $((run + 10)) powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\dev\ConkerRecompWin\snap.ps1' -Proc ConkerBFDReloaded -AtList "$snaps" -Out "C:\\dev\\ConkerRecompWin\\snaps\\ui\\$name" >/dev/null 2>&1 &)
+timeout $((run + 10)) powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\dev\ConkerRecompWin\click.ps1' -Points "$points" -Delays "$delays" 2>&1 | tr -d '\r' | tail -3
 sleep $((run / 4))
 if tasklist.exe | grep -qi ConkerBFDReloaded; then echo "still running"; else echo "NOT RUNNING (crashed or quit)"; fi
 after=$(wc -c < "$W/host/build/crash.log" 2>/dev/null || echo 0)

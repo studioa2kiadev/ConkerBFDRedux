@@ -2,8 +2,8 @@
 rem Fetches clean copies of the runtime, RT64 and RecompFrontend at the versions
 rem CBFD-Recompiled (sciaschi, MIT) uses, then applies their patches. Safe to re-run.
 setlocal
-set "D=C:\ConkerRecompWin\deps"
-set "P=C:\ConkerRecompWin\patches"
+set "D=C:\dev\ConkerRecompWin\deps"
+set "P=C:\dev\ConkerRecompWin\patches"
 if not exist "%D%" mkdir "%D%"
 call :get N64ModernRuntime https://github.com/N64Recomp/N64ModernRuntime.git cdf5abbd5026fef5c364c676e4667c45e42b6863 || exit /b 1
 call :get rt64 https://github.com/rt64/rt64.git 43373749dac9bbc1b653e6a02aed40a9e1783bed || exit /b 1

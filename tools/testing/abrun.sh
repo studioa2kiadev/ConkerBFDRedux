@@ -2,15 +2,15 @@
 # One test run with some settings changed, screenshots kept under a name:
 #   ./tools/testing/abrun.sh NAME "graphics:key=value sound:key=value ..." [secs ...]
 # SNAP_ROOM=21 (hex): screenshot times are that room's timer (refreshes), to match the
-# emulator (bizhawk/*.lua). FLAGS="cull43 ..." turns on C:\ConkerRecompWin\<name>.flag test switches for the run. NOSKIP=1 plays the intro instead. INPUT=... replaces the default presses. Uses Skip Intro and presses Start at 50 and 54 (save menu -> PLAY -> gameplay at ~58).
+# emulator (bizhawk/*.lua). FLAGS="cull43 ..." turns on C:\dev\ConkerRecompWin\<name>.flag test switches for the run. NOSKIP=1 plays the intro instead. INPUT=... replaces the default presses. Uses Skip Intro and presses Start at 50 and 54 (save menu -> PLAY -> gameplay at ~58).
 # Default screenshots: 47 (bar menu), 62 and 66 (gameplay). The settings files are backed
-# up first and always put back (and the save file). Pictures: C:\ConkerRecompWin\snaps\ab\NAME\tN.png,
+# up first and always put back (and the save file). Pictures: C:\dev\ConkerRecompWin\snaps\ab\NAME\tN.png,
 # log: ...\NAME\host_run.log, sound: ...\NAME\sound.wav. "seqps=8007B820,..." picks
 # which sequence players count as music (experiments). MODS="name ..." or MODS=none picks the mods switched on. SPEED (default 4) fast-forwards after the skip.
 set -u
 name=$1; changes=$2; shift 2
 secs="${*:-47 62 66}"
-W=/mnt/c/ConkerRecompWin
+W=/mnt/c/dev/ConkerRecompWin
 CFG=$(ls -d /mnt/c/Users/*/AppData/Local/ConkerBFDReloaded | head -1)
 out=$W/snaps/ab/$name; rm -rf $out; mkdir -p $out
 # A run that was stopped before it could clean up left the player's own files as *.abtest:
@@ -23,7 +23,7 @@ fi
 for f in graphics sound conker mods general accessibility; do cp $CFG/$f.json $CFG/$f.json.abtest; done
 cp $CFG/saves/conker.n64.us.1.0.bin $CFG/saves/save.abtest # the player's save too
 # Every run plays the same save: the player's 22 August emulator save (GAME1 continues
-# outside the barn, room 0x0C). SAVE=name picks another from C:\ConkerRecompWin\emulator_saves
+# outside the barn, room 0x0C). SAVE=name picks another from C:\dev\ConkerRecompWin\emulator_saves
 # (user_2026-09-30.eep: a copy of the player's own save, further on).
 cp $W/emulator_saves/${SAVE:-pj64_2026-08-22.eep} $CFG/saves/conker.n64.us.1.0.bin
 restore() { taskkill.exe /F /IM ConkerBFDReloaded.exe >/dev/null 2>&1; touch $W/skip_intro.flag; mv -f $CFG/saves/save.abtest $CFG/saves/conker.n64.us.1.0.bin; for f in graphics sound conker mods general accessibility; do mv -f $CFG/$f.json.abtest $CFG/$f.json; done; rm -f $W/record.flag $W/music_seqps.txt $W/snap_room.txt $W/log_window.txt; for f in ${FLAGS:-}; do rm -f $W/$f.flag; done; }
@@ -37,7 +37,7 @@ if changes and not any(c.startswith('conker:experience=') for c in changes):
     changes = ['conker:experience=Custom'] + changes
 for c in changes:
     if c.startswith('seqps='):
-        open('/mnt/c/ConkerRecompWin/music_seqps.txt', 'w').write(c[6:]); continue
+        open('/mnt/c/dev/ConkerRecompWin/music_seqps.txt', 'w').write(c[6:]); continue
     file, kv = c.split(':', 1); key, value = kv.split('=', 1)
     p = f'{cfg}/{file}.json'; d = json.load(open(p))
     if value in ('true', 'false'): value = (value == 'true')

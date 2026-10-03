@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Make the release downloads in C:\ConkerRecompWin\dist from the last builds:
+# Make the release downloads in C:\dev\ConkerRecompWin\dist from the last builds:
 #   ConkerBFDReloaded-v<version>-Windows.zip    (tools/rebuild_all.sh): the exe, SDL2.dll,
 #                                               dxcompiler.dll, dxil.dll, assets\, LICENSE, README.txt
 #   ConkerBFDReloaded-v<version>-Linux.tar.gz   (tools/build_linux.sh): the program, the shader
@@ -10,7 +10,7 @@
 # The player adds their own ROM; the program asks for it the first time.
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd)
-W=${CONKER_WIN_DIR:-/mnt/c/ConkerRecompWin}
+W=${CONKER_WIN_DIR:-/mnt/c/dev/ConkerRecompWin}
 B=$W/host/build
 LB=$(realpath -m "${1:-$R/build-linux}")
 v() { sed -n "s/^set(CONKER_VERSION_$1 \"\{0,1\}\([^\")]*\)\"\{0,1\})/\1/p" "$R/host/CMakeLists.txt"; }

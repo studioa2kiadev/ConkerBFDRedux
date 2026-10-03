@@ -168,6 +168,17 @@ decompilation (commit `3adf229`) built into `conker/`, and
 [N64Recomp](https://github.com/N64Recomp/N64Recomp) (commit `ffb39cd`, with
 `patches/n64recomp.patch` then `patches/n64recomp_conker.patch` applied) built into `N64Recomp/`.
 
+Before building the decomp, apply `patches/conker_decomp_symbols.patch` to it
+(`git -C conker apply ../patches/conker_decomp_symbols.patch`): mkst/conker at `3adf229` swaps
+`osMotorInit` and `_MakeMotorData` and leaves some of the game's libultra copies unnamed, which
+N64Recomp then translates and the link fails on (`unresolved external symbol ..._recomp`). The
+decomp's Python tools need `spimdisasm==1.33.0` (newer versions write `nonmatching` lines its
+assembler can't read) and `tools/n64splat/requirements.txt` as well as its own.
+
+The Windows build folder is `C:\dev\ConkerRecompWin`. A first build runs `tools/prepare_game.sh`,
+`tools/rebuild_all.sh --force`, `tools/prepare_game.sh` again (for `out/segments.c`),
+`host/setup_deps.bat` (from the build folder), then `tools/rebuild_all.sh --force`.
+
 1. `tools/prepare_game.sh` prepares the game code for translation.
 2. `tools/rebuild_all.sh --force` translates it (into `recomp/out`). On Windows (with WSL for
    this step), it also builds `ConkerBFDReloaded.exe` with Visual Studio 2022, CMake and Ninja,

@@ -1,7 +1,7 @@
 # Capture the game window to PNG files at the given moments.
 # Wall-clock mode: seconds since start. -Log mode: waits for "[snap] N" lines the game
 # prints at those game seconds (it holds still until snaps\tN.png exists).
-param([string]$Out = "C:\ConkerRecompWin\snaps", [string]$AtList = "6,10,14,20", [string]$Proc = "boot_test", [string]$Log = "")
+param([string]$Out = "C:\dev\ConkerRecompWin\snaps", [string]$AtList = "6,10,14,20", [string]$Proc = "boot_test", [string]$Log = "")
 $At = $AtList.Split(",")
 Add-Type -AssemblyName System.Drawing
 Add-Type @"

@@ -4,9 +4,9 @@
 # Skip Intro -> first level; from game second 60 Conker runs about and the camera turns
 # (stick + C buttons) at real speed, while ffmpeg records the game window at the
 # display's rate (60) for 12 s. (PresentMon would need administrator rights.)
-# Result: C:\ConkerRecompWin\snaps\ab\NAME\capture.mkv (+ the usual abrun.sh files).
+# Result: C:\dev\ConkerRecompWin\snaps\ab\NAME\capture.mkv (+ the usual abrun.sh files).
 name=$1; changes=$2
-W=/mnt/c/ConkerRecompWin
+W=/mnt/c/dev/ConkerRecompWin
 rm -f $W/snaps/capture_$name.mp4 $W/snaps/presents.txt
 touch $W/present_log.flag
 rm -f $W/host_run.log
@@ -17,11 +17,11 @@ rm -f $W/host_run.log
   done
   sleep 5
   rm -f $W/snaps/rect.txt
-  timeout 30 powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\ConkerRecompWin\topmost.ps1' -Seconds 15 -RectFile 'C:\ConkerRecompWin\snaps\rect.txt' >/dev/null 2>&1 &
+  timeout 30 powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\dev\ConkerRecompWin\topmost.ps1' -Seconds 15 -RectFile 'C:\dev\ConkerRecompWin\snaps\rect.txt' >/dev/null 2>&1 &
   for i in $(seq 1 50); do [ -s $W/snaps/rect.txt ] && break; sleep 0.1; done
   read x y w h < <(tr -d '\r' < $W/snaps/rect.txt)
   echo "capturing $x $y $w $h"
-  timeout 40 $W/tools/ffmpeg/bin/ffmpeg.exe -hide_banner -loglevel error -y -f gdigrab -framerate 60 -offset_x $x -offset_y $y -video_size ${w}x${h} -draw_mouse 0 -i desktop -t 12 -vf "scale=960:-2,format=yuv420p" -c:v libx264 -preset veryfast -crf 16 "C:\\ConkerRecompWin\\snaps\\capture_$name.mp4"
+  timeout 40 $W/tools/ffmpeg/bin/ffmpeg.exe -hide_banner -loglevel error -y -f gdigrab -framerate 60 -offset_x $x -offset_y $y -video_size ${w}x${h} -draw_mouse 0 -i desktop -t 12 -vf "scale=960:-2,format=yuv420p" -c:v libx264 -preset veryfast -crf 16 "C:\\dev\\ConkerRecompWin\\snaps\\capture_$name.mp4"
 ) &
 watcher=$!
 EXTRA_INPUT="60:x=1.0:3,63:y=1.0:3,66:0001:2,68:x=-1.0:2,70:0002:2" SPEED=1 "$(dirname "$0")/abrun.sh" "$name" "$changes" 76

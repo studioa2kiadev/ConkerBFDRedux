@@ -9,7 +9,7 @@ while true do
     for _, s in ipairs(shots) do
       if t >= s and t >= s and t < s + 6 and not taken[s] then
         taken[s] = true
-        client.screenshot(string.format("C:/ConkerRecompWin/bizhawk/shots_intro/t%d.png", s))
+        client.screenshot(string.format("C:/dev/ConkerRecompWin/bizhawk/shots_intro/t%d.png", s))
       end
     end
   elseif r == 0x1D then break end

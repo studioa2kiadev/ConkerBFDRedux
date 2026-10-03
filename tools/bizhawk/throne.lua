@@ -13,7 +13,7 @@ while true do
     for _, s in ipairs(shots) do
       if t >= s and not taken[s] then
         taken[s] = true
-        client.screenshot(string.format("C:/ConkerRecompWin/bizhawk/shots_intro/throne%d.png", s))
+        client.screenshot(string.format("C:/dev/ConkerRecompWin/bizhawk/shots_intro/throne%d.png", s))
       end
     end
     if t > 5760 then break end

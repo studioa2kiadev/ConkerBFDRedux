@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Build the game: re-translate it (when recomp/conker.toml or the prepared ELF changed, or
 # with --force), copy the code, host/, patches/ and the Windows scripts to the Windows build
-# folder (C:\ConkerRecompWin), and build ConkerBFDReloaded.exe there.
+# folder (C:\dev\ConkerRecompWin), and build ConkerBFDReloaded.exe there.
 #   tools/rebuild_all.sh [--force]
 # The prepared ELF comes from tools/prepare_game.sh.
 set -e
 R=$(cd "$(dirname "$0")/.." && pwd)
-W=${CONKER_WIN_DIR:-/mnt/c/ConkerRecompWin}
+W=${CONKER_WIN_DIR:-/mnt/c/dev/ConkerRecompWin}
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 cd "$R/recomp"
 if [ "${1:-}" = "--force" ] || [ conker.toml -nt out/recomp_overlays.inl ] || [ conker.us.recomp.elf -nt out/recomp_overlays.inl ]; then
@@ -25,5 +25,5 @@ cd "$R" && tar -cf "$T/host.tar" host patches && cp "$T/host.tar" "$W/" && (cd "
 for f in setup_deps build_host run_host collect_textures; do sed 's/$/\r/' "$R/host/$f.bat" > "$W/$f.bat"; done
 for f in "$R"/tools/windows/*.ps1; do sed 's/$/\r/' "$f" > "$W/$(basename "$f")"; done
 echo "== building"
-cd "$W" && cmd.exe /c C:/ConkerRecompWin/build_host.bat > build_host.log 2>&1 || true
+cd "$W" && cmd.exe /c C:/dev/ConkerRecompWin/build_host.bat > build_host.log 2>&1 || true
 tr -d '\0' < build_host.log | grep -a -iE " error |FAILED:|BUILD OK" | head -10

@@ -56,7 +56,7 @@ void conker::testing::init() {
             }
         }
         const char* dir = std::getenv("CONKER_SNAP_DIR");
-        snap_dir = dir != nullptr ? dir : "C:\\ConkerRecompWin\\snaps";
+        snap_dir = dir != nullptr ? dir : "C:\\dev\\ConkerRecompWin\\snaps";
     }
 }
 

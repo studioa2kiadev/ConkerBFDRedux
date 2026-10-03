@@ -2,17 +2,17 @@
 # Build the HD Icons pack (icons_work/conker_hd_icons.rtz) from everything collected so far,
 # and install it in the player's Mods folder.
 #   tools/textures/build_icon_pack.sh
-# Sources (C:\ConkerRecompWin): texdump* (RT64 dumps from test runs with FLAGS=texdump, and
+# Sources (C:\dev\ConkerRecompWin): texdump* (RT64 dumps from test runs with FLAGS=texdump, and
 # texdump_play from collect_textures.bat), scandump* (scan_rdram.py over memory snapshots taken
 # with FLAGS=rdramdump, or over rom_assets.py files: scandump_rom), tools/packs/conker4k.htc (GameBeast92's 4K pack). Work: icons_work/all.
 set -e
 R=$(cd "$(dirname "$0")/../.." && pwd)
-W=/mnt/c/ConkerRecompWin
+W=/mnt/c/dev/ConkerRecompWin
 P="$R/.venv/bin/python"
 T="$R/tools/textures"
 A="$R/icons_work/all"
 PACK=$W/tools/packs/conker4k.htc
-HASHER='C:\ConkerRecompWin\host\build\rt64\src\tools\texture_hasher\texture_hasher.exe'
+HASHER='C:\dev\ConkerRecompWin\host\build\rt64\src\tools\texture_hasher\texture_hasher.exe'
 mkdir -p "$A/originals" "$A/pack4k" "$A/places"
 : > "$A/places/rect_places.txt"
 n=0

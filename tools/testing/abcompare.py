@@ -6,7 +6,7 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-root = '/mnt/c/ConkerRecompWin/snaps/ab'
+root = '/mnt/c/dev/ConkerRecompWin/snaps/ab'
 a_name, b_name, t, out = sys.argv[1:5]
 la = sys.argv[5] if len(sys.argv) > 5 else a_name
 lb = sys.argv[6] if len(sys.argv) > 6 else b_name

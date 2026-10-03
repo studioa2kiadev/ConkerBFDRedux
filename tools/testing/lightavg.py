@@ -15,8 +15,8 @@ for b in bases:
     es, os_ = [], []
     for k in range(n):
         t = b + k * step
-        E = np.asarray(Image.open(f'/mnt/c/ConkerRecompWin/bizhawk/shots_intro/{prefix}{t}.png').convert('RGB')).astype(float)[y0:y1, x0:x1]
-        O = np.asarray(ours43(f'/mnt/c/ConkerRecompWin/snaps/ab/{run}/t{t}.png').resize((W, H), Image.BILINEAR)).astype(float)[y0 - Y:y1 - Y, x0 - X:x1 - X]
+        E = np.asarray(Image.open(f'/mnt/c/dev/ConkerRecompWin/bizhawk/shots_intro/{prefix}{t}.png').convert('RGB')).astype(float)[y0:y1, x0:x1]
+        O = np.asarray(ours43(f'/mnt/c/dev/ConkerRecompWin/snaps/ab/{run}/t{t}.png').resize((W, H), Image.BILINEAR)).astype(float)[y0 - Y:y1 - Y, x0 - X:x1 - X]
         es.append(E.mean()); os_.append(O.mean())
     es, os_ = np.array(es), np.array(os_)
     print(f'{b}: ours/original averaged over {n} frames: {os_.mean() / es.mean() * 100:.0f}%   (single frames range {100 * (os_ / es).min():.0f}-{100 * (os_ / es).max():.0f}%; original varies {100 * es.min() / es.mean():.0f}-{100 * es.max() / es.mean():.0f}% of its mean)')

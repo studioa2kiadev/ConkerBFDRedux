@@ -6,7 +6,7 @@
 local function room() return memory.read_u32_be(0x0BE9F0, "RDRAM") end
 local function timer() return memory.read_s32_be(0x0E0A90, "RDRAM") end
 local shots = { 391, 514, 517, 520, 523, 529, 631, 871 }
-local log = io.open("C:/ConkerRecompWin/bizhawk/shots_cmp/log.txt", "w")
+local log = io.open("C:/dev/ConkerRecompWin/bizhawk/shots_cmp/log.txt", "w")
 client.speedmode(800)
 local taken = {}
 local armed = false -- the level's timer restarts shortly after the room changes
@@ -24,7 +24,7 @@ while true do
     for _, s in ipairs(shots) do
       if t >= s and not taken[s] then
         taken[s] = true
-        client.screenshot(string.format("C:/ConkerRecompWin/bizhawk/shots_cmp/t%d.png", s))
+        client.screenshot(string.format("C:/dev/ConkerRecompWin/bizhawk/shots_cmp/t%d.png", s))
         log:write(string.format("shot %d at timer %d\n", s, t))
       end
     end

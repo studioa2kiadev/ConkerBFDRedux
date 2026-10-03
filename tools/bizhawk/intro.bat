@@ -1,5 +1,5 @@
 @echo off
-cd /d C:\ConkerRecompWin\bizhawk
+cd /d C:\dev\ConkerRecompWin\bizhawk
 if not exist shots_intro mkdir shots_intro
 del /q shots_intro\*.* 2>nul
-C:\ConkerRecompWin\bizhawk\EmuHawk.exe --lua=C:\ConkerRecompWin\bizhawk\intro.lua C:\ConkerRecompWin\bizhawk\conker.z64
+C:\dev\ConkerRecompWin\bizhawk\EmuHawk.exe --lua=C:\dev\ConkerRecompWin\bizhawk\intro.lua C:\dev\ConkerRecompWin\bizhawk\conker.z64

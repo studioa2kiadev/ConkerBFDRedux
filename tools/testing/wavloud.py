@@ -2,7 +2,7 @@
   wavloud.py NAME ... [--at from-to,...]"""
 import sys, wave
 import numpy as np
-root = '/mnt/c/ConkerRecompWin/snaps/ab'
+root = '/mnt/c/dev/ConkerRecompWin/snaps/ab'
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 spans = [(46, 54, 'bar menu'), (60, 70, 'gameplay')]
 print('%-18s' % '', ''.join('%14s' % s[2] for s in spans))

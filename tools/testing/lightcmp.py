@@ -14,8 +14,8 @@ def ours43(p):
 X, Y, W, H = 18, 10, 288, 216
 x0, y0, x1, y1 = 22, 14, 303, 223
 for t in ts:
-    E = np.asarray(Image.open(f'/mnt/c/ConkerRecompWin/bizhawk/shots_intro/{prefix}{t}.png').convert('RGB')).astype(float)
-    O = np.asarray(ours43(f'/mnt/c/ConkerRecompWin/snaps/ab/{run}/t{t}.png').resize((W, H), Image.BILINEAR)).astype(float)
+    E = np.asarray(Image.open(f'/mnt/c/dev/ConkerRecompWin/bizhawk/shots_intro/{prefix}{t}.png').convert('RGB')).astype(float)
+    O = np.asarray(ours43(f'/mnt/c/dev/ConkerRecompWin/snaps/ab/{run}/t{t}.png').resize((W, H), Image.BILINEAR)).astype(float)
     e = E[y0:y1, x0:x1]; o = O[y0 - Y:y1 - Y, x0 - X:x1 - X]
     c = np.corrcoef(e.mean(2).ravel(), o.mean(2).ravel())[0, 1]
     lit = e.mean(2) > 40

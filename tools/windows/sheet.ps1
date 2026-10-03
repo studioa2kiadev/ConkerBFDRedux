@@ -1,5 +1,5 @@
 # Combine all snaps\t*.png into snaps\sheet.png (4 per row, half size, labelled).
-param([string]$Dir = "C:\ConkerRecompWin\snaps", [string]$Filter = "t*.png")
+param([string]$Dir = "C:\dev\ConkerRecompWin\snaps", [string]$Filter = "t*.png")
 Add-Type -AssemblyName System.Drawing
 $files = Get-ChildItem $Dir -Filter $Filter | Sort-Object { [double](($_.BaseName -replace '[^0-9.]', '')) }
 $w = 400; $h = 300; $cols = 4; $rows = [math]::Ceiling($files.Count / $cols)

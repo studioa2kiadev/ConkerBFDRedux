@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Regenerate patches/rt64_conker.patch: our changes to RT64 (C:\ConkerRecompWin\deps\rt64) on top of
+# Regenerate patches/rt64_conker.patch: our changes to RT64 (C:\dev\ConkerRecompWin\deps\rt64) on top of
 # RT64 at its pinned commit with CBFD-Recompiled's patches/rt64.patch. Works in its own clone,
-# C:\ConkerRecompWin\rt64_patch_base (made if missing), and never runs git anywhere else.
+# C:\dev\ConkerRecompWin\rt64_patch_base (made if missing), and never runs git anywhere else.
 set -euo pipefail
 R=$(cd "$(dirname "$0")/.." && pwd)
-W=${CONKER_WIN_DIR:-/mnt/c/ConkerRecompWin}
+W=${CONKER_WIN_DIR:-/mnt/c/dev/ConkerRecompWin}
 DEPS=$W/deps/rt64
 BASE=$W/rt64_patch_base
 COMMIT=43373749dac9bbc1b653e6a02aed40a9e1783bed
