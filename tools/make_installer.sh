@@ -94,5 +94,5 @@ ls -la "$W/dist/ConkerRedux-Setup-$version.exe"
 # The portable zip: the same files, in a ConkerRedux folder.
 portable=$W/dist/ConkerRedux-$version-Windows-Portable.zip
 rm -f "$portable"
-(cd "$W/installer" && rm -rf ConkerRedux && cp -r stage ConkerRedux && cmd.exe /c "tar -a -cf $(wslpath -w "$portable") ConkerRedux" >/dev/null 2>&1; rm -rf ConkerRedux)
+(cd "$W/installer" && rm -rf ConkerRedux && cp -r stage ConkerRedux && cmd.exe /c "%SystemRoot%\\System32\\tar.exe -a -cf ..\\dist\\$(basename "$portable") ConkerRedux" >/dev/null; rm -rf ConkerRedux)
 ls -la "$portable"
