@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Make the Conker Redux installer from the last Windows build (tools/rebuild_all.sh), in WSL:
 #   tools/make_installer.sh [version]          (default: 0.1.0)
-# -> C:\dev\ConkerRecompWin\dist\ConkerRedux-Setup-<version>.exe
+# -> C:\dev\ConkerRecompWin\dist\ConkerRedux-Setup-<version>.exe, and the same files as a portable
+#    zip, ConkerRedux-<version>-Windows-Portable.zip (unzip anywhere, run ConkerRedux.exe).
 # Staged in C:\dev\ConkerRecompWin\installer\stage: the program (as ConkerRedux.exe), its DLLs and
 # assets, the Visual C++ runtime next to it (from Visual Studio's redistributable files, so the
 # player needn't install it), LICENSE.txt, README.txt and the source code (source\, as the GPL asks
@@ -50,7 +51,7 @@ Conker's Bad Fur Day (N64) running natively on PC, with a modern analog camera, 
 controller layout, 60 fps, widescreen and high resolution.
 
 HOW TO PLAY
- 1. Start Conker Redux from the Start menu or the desktop.
+ 1. Start Conker Redux from the Start menu or the desktop (portable zip: run ConkerRedux.exe).
  2. The first time, choose your own copy of the game: the US ROM of Conker's Bad Fur Day
     (.z64, .n64 or .v64). It's only asked for once. No game data is included.
     (A ROM put in the game's folder is found without asking.)
@@ -60,6 +61,7 @@ CONTROLS (Xbox controller)
  Left stick  move            A  jump              B  action / attack
  Right stick camera          R3 camera distance  RT  center camera / look
  LT          crouch          X, Y  rotate camera  D-pad up  first-person view
+ L3          free camera off / on (off: the right stick is the N64's C-buttons)
 
 Your settings, saves and ROM are kept in %LOCALAPPDATA%\ConkerRedux (the uninstaller
 leaves them). If the game crashes, a report is written to crash.log there.
@@ -88,3 +90,9 @@ done
   "/DIconFile=$(wslpath -w "$R/host/icon/conker.ico")" \
   "$(wslpath -w "$R/host/installer/ConkerRedux.iss")"
 ls -la "$W/dist/ConkerRedux-Setup-$version.exe"
+
+# The portable zip: the same files, in a ConkerRedux folder.
+portable=$W/dist/ConkerRedux-$version-Windows-Portable.zip
+rm -f "$portable"
+(cd "$W/installer" && rm -rf ConkerRedux && cp -r stage ConkerRedux && cmd.exe /c "tar -a -cf $(wslpath -w "$portable") ConkerRedux" >/dev/null 2>&1; rm -rf ConkerRedux)
+ls -la "$portable"
