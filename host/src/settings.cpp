@@ -305,7 +305,7 @@ namespace {
             "The right stick turns the camera freely around Conker and tilts it up and down; it stays where you "
             "leave it. C-Left or C-Right hands the camera back to the game, and cutscenes, special cameras and "
             "aiming keep the game's own. Click the right stick (R3) to switch the distance: Standard, Far and Over "
-            "the Shoulder. With a mouse, set Mouse Sensitivity (General tab) above 0 to do the same "
+            "the Shoulder. Click the left stick (L3) to switch the Free Camera off and on while playing. With a mouse, set Mouse Sensitivity (General tab) above 0 to do the same "
             "with the mouse, and the scroll wheel to zoom.",
             true);
         conker.add_option_change_callback("free_camera",
@@ -489,6 +489,13 @@ float conker::camera_turn_speed() {
 }
 
 bool conker::free_camera_enabled() {
+    return free_camera;
+}
+
+// L3 (free_camera.cpp): only for this session, so the experience presets' value stays as it is
+// saved; changing the option in the Conker tab sets it again.
+bool conker::toggle_free_camera() {
+    free_camera = !free_camera;
     return free_camera;
 }
 

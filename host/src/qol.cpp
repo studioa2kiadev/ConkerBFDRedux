@@ -16,6 +16,9 @@
 // - Longer Tail Spin: the spin after a jump (A twice) floats and glides for longer.
 // - Toggle R-Look and Toggle Crouch: a press of R or Z holds it until the next press, for players
 //   who can't hold a button down.
+// - The Free Camera notice (Conker Redux): when L3 switches the Free Camera (free_camera.cpp),
+//   FREECAM ON or FREECAM OFF shows in the top-left corner for notice_seconds, then fades out. The
+//   words are the user's art (host/art/redux_freecam.png -> tools/redux_menu_art.py).
 
 #include <algorithm>
 #include <atomic>
@@ -216,6 +219,109 @@ namespace {
         }
     }
 
+    // The Free Camera notice.
+    constexpr double notice_seconds = 2.0, notice_fade_seconds = 0.4;
+    constexpr float notice_left = 30.0f, notice_top = 26.0f, notice_gap = 10.0f;
+    constexpr float notice_scale = 34.0f / 120.0f; // the pictures' pixels to the UI's (FREECAM 34 high)
+    std::atomic<int64_t> notice_at{ 0 };  // ticks when it was asked for (0: never)
+    std::atomic<bool> notice_on{ false };
+    bool notice_created = false;
+    recompui::ContextId notice_context = recompui::ContextId::null();
+    recompui::Element* notice_box = nullptr;
+    recompui::Image* notice_words[2] = {}; // OFF, ON
+    int notice_shown = -1;
+
+    // A PNG's width and height (from its header), 0 if it isn't one.
+    void png_size(const std::vector<char>& bytes, float* w, float* h) {
+        auto be32 = [&](size_t at) {
+            return ((uint32_t)(uint8_t)bytes[at] << 24) | ((uint32_t)(uint8_t)bytes[at + 1] << 16) |
+                ((uint32_t)(uint8_t)bytes[at + 2] << 8) | (uint32_t)(uint8_t)bytes[at + 3];
+        };
+        *w = *h = 0.0f;
+        if (bytes.size() >= 24) {
+            *w = (float)be32(16);
+            *h = (float)be32(20);
+        }
+    }
+
+    // Loads assets/redux_menu/<name>.png as an image at (left, top) in the notice, its own pixels
+    // scaled by notice_scale; out: its size. Null if it's missing.
+    recompui::Image* notice_image(const char* name, float left, float top, float* w, float* h) {
+        std::ifstream file(recompui::file::get_asset_path((std::string("redux_menu/") + name + ".png").c_str()), std::ios::binary);
+        std::vector<char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        png_size(bytes, w, h);
+        *w *= notice_scale;
+        *h *= notice_scale;
+        if (bytes.empty() || *w <= 0.0f) {
+            return nullptr;
+        }
+        const std::string src = std::string("?/redux/notice_") + name;
+        recompui::queue_image_from_bytes_file(src, bytes);
+        recompui::Image* image = notice_context.create_element<recompui::Image>(notice_box, src);
+        image->set_position(recompui::Position::Absolute);
+        image->set_left(left);
+        image->set_top(top);
+        image->set_width(*w);
+        image->set_height(*h);
+        return image;
+    }
+
+    void create_notice() {
+        notice_context = recompui::create_context();
+        notice_context.open();
+        notice_context.set_captures_input(false);
+        notice_context.set_captures_mouse(false);
+        notice_box = notice_context.create_element<recompui::Element>(notice_context.get_root_element());
+        notice_box->set_position(recompui::Position::Absolute);
+        notice_box->set_left(0.0f);
+        notice_box->set_top(0.0f);
+        float fw = 0.0f, fh = 0.0f;
+        notice_image("freecam", notice_left, notice_top, &fw, &fh);
+        const char* names[2] = { "freecam_off", "freecam_on" };
+        for (int k = 0; k < 2; k++) {
+            // Beside FREECAM, level with its middle (its letters dip and rise).
+            float w = 0.0f, h = 0.0f;
+            notice_words[k] = notice_image(names[k], notice_left + fw + notice_gap, notice_top, &w, &h);
+            if (notice_words[k] != nullptr) {
+                notice_words[k]->set_top(notice_top + (fh - h) * 0.5f);
+            }
+        }
+        notice_context.close();
+        notice_created = true;
+    }
+
+    void update_notice() {
+        const int64_t at = notice_at.load();
+        const double since = at == 0 ? 1e9 : std::chrono::duration<double>(clock::now() - clock::time_point(clock::duration(at))).count();
+        const bool wanted = ui_ready && since < notice_seconds + notice_fade_seconds;
+        if (!wanted) {
+            if (notice_created && recompui::is_context_shown(notice_context)) {
+                recompui::hide_context(notice_context);
+            }
+            return;
+        }
+        if (!notice_created) {
+            create_notice();
+        }
+        if (!recompui::is_context_shown(notice_context)) {
+            recompui::show_context(notice_context, "");
+            notice_shown = -1;
+        }
+        const int on = notice_on.load() ? 1 : 0;
+        const float opacity = since < notice_seconds ? 1.0f : (float)std::clamp(1.0 - (since - notice_seconds) / notice_fade_seconds, 0.0, 1.0);
+        notice_context.open();
+        if (on != notice_shown) {
+            for (int k = 0; k < 2; k++) {
+                if (notice_words[k] != nullptr) {
+                    notice_words[k]->set_opacity(k == on ? 1.0f : 0.0f);
+                }
+            }
+            notice_shown = on;
+        }
+        notice_box->set_opacity(opacity);
+        notice_context.close();
+    }
+
     // Toggle R-Look / Toggle Crouch.
     struct Toggle {
         bool was_down = false;
@@ -258,6 +364,7 @@ void conker::qol::on_vi() {
 
 void conker::qol::update() {
     update_skip();
+    update_notice();
     const clock::time_point now = clock::now();
     if (now - last_check >= check_every) {
         last_check = now;
@@ -291,6 +398,11 @@ void conker::qol::update() {
         icon_image->set_rotation((float)(14.0 * std::sin(seconds * 2.0 * 3.14159265 * 0.9)));
         icon_context.close();
     }
+}
+
+void conker::qol::show_free_camera_notice(bool on) {
+    notice_on = on;
+    notice_at = clock::now().time_since_epoch().count();
 }
 
 void conker::qol::set_player_buttons(uint16_t buttons) {

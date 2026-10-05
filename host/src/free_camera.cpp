@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -116,8 +117,10 @@ namespace {
     // it stays put while he jumps), plus this much. The eye never goes lower, wherever it is.
     constexpr float hover_above_conker_floor = 25.0f;
     constexpr float floor_probe_below = 160.0f;
-    // Standard (the "mid" distance): the game's own, brought in by this much.
+    // Standard (the "mid" distance): the game's own, brought in by standard_scale, then this far of
+    // the way out toward Far (Far's own distance; 0.5: halfway between the two).
     constexpr float standard_scale = 0.85f;
+    constexpr float standard_toward_far = 0.5f;
     enum class Distance { Standard, Far, Shoulder };
     // Smoothing (Conker Redux): the camera's own moves glide instead of jumping. Its own turns (round
     // a post, back to where it could see Conker) settle over yaw_settle_seconds (the stick's turns
@@ -168,6 +171,8 @@ namespace {
         double last_view = 0.0;         // game seconds at the last view
         Distance distance = Distance::Standard; // R3's choice
         bool r3_was_down = false;
+        bool l3_was_down = false;
+        bool l3_off = false; // L3 switched the Free Camera off: the mouse leaves the camera alone too
         float shoulder = 0.0f;          // 0 to 1: how far the over-the-shoulder shift has glided in
         float shoulder_room = shoulder_offset; // how far right of Conker is clear this frame
         float ground_lift = 0.0f;       // units the eye is raised off the ground under it
@@ -297,6 +302,36 @@ namespace {
         }
         return std::clamp(along, 0.0f, full);
     }
+
+    // Line of sight, seeing past thin things (ladders, posts, rails), which the see-through fade
+    // (update_see_through) shows Conker through: when something's in the way, the same slide from
+    // the eye back toward Conker finds its far side; if what's in the way is no thicker than
+    // thin_obstacle, it doesn't count. Something seen from one side only (a wall with nothing
+    // behind it) or an eye inside something always counts, so the eye can't leave the level.
+    // With dodge_obstacles off (the default), nothing between the eye and Conker moves the camera at
+    // all: the fade shows him through it, and only the camera's own collision stops the eye. The
+    // environment variable CONKER_CAM_DODGE=1 brings the dodging back (testing).
+    constexpr float thin_obstacle = 64.0f;
+    float sight_reach(uint8_t* rdram, recomp_context* ctx, gpr camera, const float look[3], const float dir[3], float full) {
+        static const bool dodge_obstacles = std::getenv("CONKER_CAM_DODGE") != nullptr;
+        if (!dodge_obstacles) {
+            return full;
+        }
+        const float along = clear_reach(rdram, ctx, camera, look, dir, full);
+        if (along >= full) {
+            return full;
+        }
+        float eye[3], back_dir[3];
+        for (int i = 0; i < 3; i++) {
+            eye[i] = look[i] + dir[i] * full;
+            back_dir[i] = -dir[i];
+        }
+        const float back = clear_reach(rdram, ctx, camera, eye, back_dir, full);
+        if (back > 24.0f && back < full && (full - back) - along <= thin_obstacle) {
+            return full;
+        }
+        return along;
+    }
 }
 
 // func_1512BB10 (the camera's collision), after its first instruction: $a0 is the camera.
@@ -326,6 +361,18 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
     int notches = 0;
     bool r3_pressed = false;
     if (!orbit.turned) {
+        // L3: the Free Camera off and on again (for this session; the Conker tab's option is
+        // what it starts as). Off hands the camera back to the game, as C-Left or C-Right do.
+        const bool l3_down = recompinput::get_input_digital(0, recompinput::InputField::controller_digital(SDL_CONTROLLER_BUTTON_LEFTSTICK));
+        if (l3_down && !orbit.l3_was_down) {
+            const bool on = conker::toggle_free_camera();
+            conker::qol::show_free_camera_notice(on);
+            orbit.l3_off = !on;
+            if (!on) {
+                orbit.engaged = false;
+            }
+        }
+        orbit.l3_was_down = l3_down;
         // R3: the next distance (Standard, Far, Over the Shoulder).
         const bool r3_down = conker::free_camera_enabled() &&
             recompinput::get_input_digital(0, recompinput::InputField::controller_digital(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
@@ -338,6 +385,10 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
         recompinput::get_mouse_deltas(&mouse_x, &mouse_y);
         notches = wheel_notches.exchange(0);
         if (!conker::mouse_turns_camera()) { // Mouse: Turn the Camera off: the mouse only aims
+            mouse_x = mouse_y = 0.0f;
+            notches = 0;
+        }
+        if (orbit.l3_off && !conker::free_camera_enabled()) { // the game's own camera, as on the N64
             mouse_x = mouse_y = 0.0f;
             notches = 0;
         }
@@ -405,12 +456,14 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
 
     orbit.pitch = std::clamp(orbit.pitch + mouse_y * degrees_per_pixel * degrees_to_radians, min_pitch, max_pitch);
 
-    // The distance is the player's (the wheel's), except where the game pulls its own camera in
-    // closer than the controller can (tight spots, depending on its angle): so does the orbit. It
-    // knows where big posts and beams the collision lets the camera through would block the view.
+    // The distance is the player's (the wheel's). The game pulls its own camera in closer than the
+    // controller can in tight spots and on ladders (to keep big posts and beams out of the view);
+    // with the see-through fade that's not needed, so the orbit keeps its distance. The environment
+    // variable CONKER_CAM_GAMEZOOM=1 follows the game's zoom again (testing).
     // The change glides (orbit.reach) rather than jumps.
-    static const bool no_game_zoom = std::getenv("CONKER_CAM_NOZOOM") != nullptr; // (testing)
+    static const bool no_game_zoom = std::getenv("CONKER_CAM_GAMEZOOM") == nullptr;
     float chosen = std::max(orbit.wanted * standard_scale, nearest);
+    chosen += (farthest * far_scale - chosen) * standard_toward_far;
     if (orbit.distance == Distance::Far) {
         chosen = farthest * far_scale;
     } else if (orbit.distance == Distance::Shoulder) {
@@ -455,7 +508,7 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
             const float lift = k * sight_lift_step;
             float dir[3];
             direction(yaw, std::min(orbit.pitch + lift, max_pitch), dir);
-            const float along = clear_reach(rdram, ctx, camera, look, dir, orbit.reach);
+            const float along = sight_reach(rdram, ctx, camera, look, dir, orbit.reach);
             if (along >= std::min(sight_closest, orbit.reach - 1.0f)) {
                 *lift_out = lift;
                 return along;
@@ -543,13 +596,13 @@ extern "C" void conker_mouse_camera_collide(uint8_t* rdram, recomp_context* ctx)
     }
     float dir[3];
     direction(orbit.view_yaw, std::min(orbit.pitch + orbit.lift, max_pitch), dir);
-    float along = clear_reach(rdram, ctx, camera, look, dir, orbit.reach);
+    float along = sight_reach(rdram, ctx, camera, look, dir, orbit.reach);
     if (along < std::min(sight_closest, orbit.reach - 1.0f) && orbit.lift > needed_lift) {
         // Easing back down, the angle on the way can catch something (a beam above): the one found
         // clear instead.
         orbit.lift = needed_lift;
         direction(orbit.view_yaw, std::min(orbit.pitch + orbit.lift, max_pitch), dir);
-        along = clear_reach(rdram, ctx, camera, look, dir, orbit.reach);
+        along = sight_reach(rdram, ctx, camera, look, dir, orbit.reach);
     }
     const float sight = (along >= orbit.reach) ? orbit.reach : std::clamp(along - sight_margin, std::min(sight_nearest, orbit.reach), orbit.reach);
     // Glide to it: in quickly, out slowly, and never past what's in the way.
@@ -716,10 +769,115 @@ extern "C" void conker_mouse_camera(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+// See-through: whatever stands between the camera and Conker is faded out with a dither pattern
+// (RT64's pixel shader, RasterPS.hlsl, patches/rt64_conker.patch), in a soft-edged circle on the
+// screen around him, centred between his feet (+0x2A4) and the look-at point above them and not
+// below his feet (the floor he stands on), and only for what's
+// nearer the camera than he is by see_through_margin (more faded the nearer, up to
+// see_through_strength). Only in the normal camera. Here, as the view is built: where both ends
+// land on screen, worked out the way the game draws them, from the eye it drew from (+0x2EC)
+// toward the look-at point (+0x2BC) with the world's up as up, through player 1's projection
+// (guPerspectiveF's matrix, D_800BE628's camera + 0xBC: x and y scaled by [0][0] and [1][1], w
+// the distance along the view times the matrix's scale, -[2][3], times the view matrix's own
+// scale: the game's view (D_800D9C10, player 1's, as func_1510B690 copies it) shrinks the world,
+// read from the length of its first column). RT64 widens the view for the
+// window itself, so the shader squeezes x by 4:3 over the window's shape.
+extern "C" volatile float rt64_conker_see_through[8]; // RT64, rt64_framebuffer_renderer.cpp
+namespace {
+    constexpr uint32_t projection_cameras = 0x800BE628; // D_800BE628, 0x180-byte cameras
+    constexpr uint32_t view_matrices = 0x800D9C10;      // D_800D9C10, a float 4x4 per player
+    constexpr float see_through_margin = 60.0f;   // units nearer than Conker before fading starts (clears his tail)
+    constexpr float see_through_ramp = 50.0f;     // units over which it fades in fully
+    constexpr float see_through_radius = 75.0f;   // the circle's radius around him, in units
+    constexpr float see_through_strength = 0.85f; // the most of it faded (1: gone)
+    // RT64 keeps the last values it was given: when the normal view hasn't been built for this long
+    // (cutscenes and other cameras that skip it), see_through_on_vi turns the fade off.
+    constexpr double see_through_stale_seconds = 0.1;
+    std::atomic<int64_t> see_through_updated{ 0 }; // steady_clock ticks at the last update
+
+    int64_t steady_ticks() {
+        return std::chrono::steady_clock::now().time_since_epoch().count();
+    }
+
+    void update_see_through(uint8_t* rdram) {
+        volatile float* out = rt64_conker_see_through;
+        const gpr camera = (gpr)(int32_t)MEM_W(0, (gpr)(int32_t)current_camera);
+        const uint32_t projections = (uint32_t)MEM_W(0, (gpr)(int32_t)projection_cameras);
+        see_through_updated = steady_ticks();
+        // Never in cutscenes, even those that keep the follow camera (conker::qol::cutscene_playing).
+        if (!was_normal_camera || conker::qol::cutscene_playing() || (uint32_t)camera == 0 || projections == 0) {
+            out[7] = 0.0f;
+            return;
+        }
+        const gpr projection = (gpr)(int32_t)(projections + 0xBC);
+        const float sx = read_float(rdram, projection, 0x00);
+        const float sy = read_float(rdram, projection, 0x14);
+        const gpr view = (gpr)(int32_t)view_matrices;
+        const float view_scale = std::sqrt(read_float(rdram, view, 0x00) * read_float(rdram, view, 0x00) +
+            read_float(rdram, view, 0x10) * read_float(rdram, view, 0x10) + read_float(rdram, view, 0x20) * read_float(rdram, view, 0x20));
+        const float scale = -read_float(rdram, projection, 0x2C);
+        const float depth_scale = scale * view_scale; // w per unit along the view
+        float eye[3], f[3], ends[2][3];
+        for (int i = 0; i < 3; i++) {
+            eye[i] = read_float(rdram, camera, 0x2EC + i * 4);
+            f[i] = read_float(rdram, camera, 0x2BC + i * 4) - eye[i];
+            ends[0][i] = read_float(rdram, camera, 0x2A4 + i * 4);
+            // The look-at point Conker's under: without the over-the-shoulder shift.
+            ends[1][i] = read_float(rdram, camera, 0x2BC + i * 4) - (view_shift.applied ? view_shift.offset[i] : 0.0f);
+        }
+        const float f_length = std::sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+        if (!(f_length > 1.0f) || !(scale > 0.0f) || !(view_scale > 0.0f) || !(sx > 0.0f) || !(sy > 0.0f)) {
+            out[7] = 0.0f;
+            return;
+        }
+        for (float& v : f) {
+            v /= f_length;
+        }
+        // right = forward x up (0, 1, 0); up = right x forward.
+        float r[3] = { -f[2], 0.0f, f[0] };
+        const float r_length = std::sqrt(r[0] * r[0] + r[2] * r[2]);
+        if (!(r_length > 1e-3f)) {
+            out[7] = 0.0f;
+            return;
+        }
+        r[0] /= r_length;
+        r[2] /= r_length;
+        const float u[3] = { r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0] };
+        float screen[2][2], depth = 1e30f;
+        for (int e = 0; e < 2; e++) {
+            const float d[3] = { ends[e][0] - eye[0], ends[e][1] - eye[1], ends[e][2] - eye[2] };
+            const float along = d[0] * f[0] + d[1] * f[1] + d[2] * f[2];
+            if (!(along > see_through_margin)) {
+                out[7] = 0.0f;
+                return;
+            }
+            const float w = along * scale;
+            screen[e][0] = sx * (d[0] * r[0] + d[1] * r[1] + d[2] * r[2]) / w;
+            screen[e][1] = sy * (d[0] * u[0] + d[1] * u[1] + d[2] * u[2]) / w;
+            depth = std::min(depth, along);
+        }
+        out[0] = screen[0][0];
+        out[1] = screen[0][1];
+        out[2] = screen[1][0];
+        out[3] = screen[1][1];
+        out[4] = (depth - see_through_margin) * depth_scale;   // fading starts nearer than this w
+        out[5] = see_through_ramp * depth_scale;                // and is full this much nearer
+        out[6] = sy * see_through_radius / (depth * scale);     // radius, in the view's height (-1 to 1)
+        out[7] = see_through_strength;
+        static const bool debug = std::getenv("CONKER_SEE_THROUGH_DEBUG") != nullptr;
+        static int frames = 0;
+        if (debug && frames++ % 60 == 0) {
+            std::printf("[see-through] feet %.2f,%.2f top %.2f,%.2f depth %.1f scale %.3f view %.4f w %.2f radius %.3f\n",
+                out[0], out[1], out[2], out[3], depth, scale, view_scale, out[4], out[6]);
+        }
+    }
+}
+
 // func_151284C4, once func_1512C490 has built the view: undo the over-the-shoulder shift, so the
 // game's camera (and next frame's update) carries on from where it really is. The view copied the
 // eye into the one it drew from (+0x2EC); that's put back too where it holds the shifted eye.
 extern "C" void conker_mouse_camera_view_built(uint8_t* rdram, recomp_context* ctx) {
+    update_see_through(rdram);
     if (!view_shift.applied) {
         return;
     }
@@ -731,6 +889,13 @@ extern "C" void conker_mouse_camera_view_built(uint8_t* rdram, recomp_context* c
         }
         write_float(rdram, camera, 0x2BC + i * 4, view_shift.look[i]);
         write_float(rdram, camera, 0x2F8 + i * 4, view_shift.eye[i]);
+    }
+}
+
+void conker::see_through_on_vi() {
+    const auto since = std::chrono::steady_clock::duration(steady_ticks() - see_through_updated.load());
+    if (std::chrono::duration<double>(since).count() > see_through_stale_seconds) {
+        rt64_conker_see_through[7] = 0.0f;
     }
 }
 

@@ -98,12 +98,15 @@ namespace conker {
     // free_camera.cpp: whether player 1's game camera was the normal follow camera last frame (not
     // R-Look, aiming, cutscenes or another special camera).
     bool normal_camera();
+    // free_camera.cpp, every VI: the see-through fade goes off when the view stops being updated.
+    void see_through_on_vi();
     // field_of_view.cpp (CBFD-Recompiled V0.1.5): Camera: Field of View's part of the culls.
     namespace field_of_view {
         void adjust_cull_scales(uint8_t* rdram, uint64_t camera_address);
     }
     bool skip_intro();
     bool free_camera_enabled();
+    bool toggle_free_camera(); // settings.cpp: L3 (free_camera.cpp), for this session; returns the new state
     // settings.cpp: Camera Follow (the Free Camera drifts back behind Conker when left alone).
     bool camera_follow_enabled();
     // free_camera.cpp: the right stick for the Free Camera (x right, y up, past the dead zone).
@@ -147,6 +150,7 @@ namespace conker {
         void update();        // main thread (update_gfx): the Autosave Icon
         void on_vi();         // every VI: Pause When Unfocused holds the game here
         void set_player_buttons(uint16_t buttons); // player 1's own buttons (Skip Any Cutscene's hold)
+        void show_free_camera_notice(bool on); // FREECAM ON / OFF, top left (free_camera.cpp's L3)
         uint16_t apply_toggles(uint16_t buttons); // player 1's buttons: Toggle R-Look / Crouch
         // settings.cpp: the options.
         bool saving_icon();

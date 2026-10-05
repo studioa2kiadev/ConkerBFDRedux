@@ -1009,10 +1009,41 @@ index 69a82ac..c98c33f 100644
              gLinearWrapMirrorSampler = builder.addImmutableSampler(8, samplerLibrary.linear.wrapMirror.get());
              gLinearWrapClampSampler = builder.addImmutableSampler(9, samplerLibrary.linear.wrapClamp.get());
 diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
-index 2046b61..30c90c5 100644
+index 2046b61..9fdea5d 100644
 --- a/src/render/rt64_framebuffer_renderer.cpp
 +++ b/src/render/rt64_framebuffer_renderer.cpp
-@@ -229,11 +229,14 @@ namespace RT64 {
+@@ -50,6 +50,11 @@ namespace interop {
+     };
+ };
+ 
++// Conker: the see-through fade, set by the host (host/src/free_camera.cpp): Conker's feet and the point
++// above them on screen (x, y, x, y), then the w the fade starts nearer than, its ramp, its radius and how
++// faded at most (0: off). Copied into FrameParams for each frame's draws (RasterPS.hlsl).
++extern "C" volatile float rt64_conker_see_through[8] = {};
++
+ namespace RT64 {
+     // Helper functions.
+     
+@@ -149,6 +154,9 @@ namespace RT64 {
+         frameParams.frameCount = 0;
+         frameParams.viewUbershaders = false;
+         frameParams.ditherNoiseStrength = 1.0f;
++        frameParams.conkerPadding = 0;
++        frameParams.conkerSeeThroughEnds = { 0.0f, 0.0f, 0.0f, 0.0f };
++        frameParams.conkerSeeThrough = { 0.0f, 0.0f, 0.0f, 0.0f };
+ 
+         shaderUploader = std::make_unique<BufferUploader>(worker->device);
+         descCommonSet = std::make_unique<FramebufferRendererDescriptorCommonSet>(shaderLibrary->samplerLibrary, worker->device->getCapabilities().raytracing, worker->device);
+@@ -175,6 +183,8 @@ namespace RT64 {
+         rspSmoothNormalVector.clear();
+         frameParams.viewUbershaders = ubershadersVisible;
+         frameParams.ditherNoiseStrength = ditherNoiseStrength;
++        frameParams.conkerSeeThroughEnds = { rt64_conker_see_through[0], rt64_conker_see_through[1], rt64_conker_see_through[2], rt64_conker_see_through[3] };
++        frameParams.conkerSeeThrough = { rt64_conker_see_through[4], rt64_conker_see_through[5], rt64_conker_see_through[6], rt64_conker_see_through[7] };
+         framebufferCount = 0;
+ 
+         // Create dummy color target if it hasn't been created yet.
+@@ -229,11 +239,14 @@ namespace RT64 {
      {
          for (uint32_t i = 0; i < callTileCount; i++) {
              const DrawCallTile &callTile = callTiles[i];
@@ -1028,7 +1059,7 @@ index 2046b61..30c90c5 100644
              if (callTile.tileCopyUsed) {
                  const auto &it = fbManager->tileCopies.find(callTile.tmemHashOrID);
                  if (it != fbManager->tileCopies.end()) {
-@@ -378,6 +381,7 @@ namespace RT64 {
+@@ -378,6 +391,7 @@ namespace RT64 {
          descCommonSet->setBuffer(descCommonSet->RDPTiles, drawBuffers->rdpTilesBuffer.get(), RenderBufferStructuredView(sizeof(interop::RDPTile)));
          descCommonSet->setBuffer(descCommonSet->GPUTiles, drawBuffers->gpuTilesBuffer.get(), RenderBufferStructuredView(sizeof(interop::GPUTile)));
          descCommonSet->setBuffer(descCommonSet->DynamicRenderParams, drawBuffers->renderParamsBuffer.get(), RenderBufferStructuredView(sizeof(interop::RenderParams)));
@@ -1036,7 +1067,7 @@ index 2046b61..30c90c5 100644
  
          // Make sure the versions vector matches the texture cache size.
          descriptorTextureVersions.resize(textureCacheSize, 0);
-@@ -1390,6 +1394,17 @@ namespace RT64 {
+@@ -1390,6 +1404,17 @@ namespace RT64 {
          rawVertexViews[0] = RenderVertexBufferView(RenderBufferReference(triPosRes), PosStride * rawTriVertexCount);
          rawVertexViews[1] = RenderVertexBufferView(RenderBufferReference(triTcRes), TcStride * rawTriVertexCount);
          rawVertexViews[2] = RenderVertexBufferView(RenderBufferReference(triColRes), ColStride * rawTriVertexCount);
@@ -1191,7 +1222,7 @@ index bc250a2..8452867 100644
  // Set 1 - RGBA32 texture cache.
  Texture2D<float4> gTextures[8192] : register(t0, space1);
 diff --git a/src/shaders/RasterPS.hlsl b/src/shaders/RasterPS.hlsl
-index e7895c3..0d02b2e 100644
+index e7895c3..f231398 100644
 --- a/src/shaders/RasterPS.hlsl
 +++ b/src/shaders/RasterPS.hlsl
 @@ -46,7 +46,7 @@ float sampleBackgroundDepth(int2 pixelPos, uint sampleCount) {
@@ -1203,9 +1234,47 @@ index e7895c3..0d02b2e 100644
  {
      const OtherMode otherMode = { rp.omL, rp.omH };
  #if defined(DYNAMIC_RENDER_PARAMS)
-@@ -56,7 +56,14 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+@@ -55,8 +55,52 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+     }
  #endif
      
++    // Conker: the see-through fade (FrameParams' conkerSeeThrough, host/src/free_camera.cpp). 3D drawn
++    // nearer the camera than Conker, inside a soft circle around him on screen, is dithered away: a 4x4
++    // ordered pattern, more of it gone the nearer it is and the further inside, so it fades smoothly.
++    if ((FrParams.conkerSeeThrough.w > 0.0f) && !renderFlagRect(rp.flags) && (otherMode.zSource() != G_ZS_PRIM)) {
++        float w = vertexPosition.w;
++#ifdef __spirv__
++        w = 1.0f / w; // Vulkan gives 1/w
++#endif
++        const float4 st = FrParams.conkerSeeThrough;
++        const float nearness = saturate((st.x - w) / max(st.y, 1e-4f));
++        if (nearness > 0.0f) {
++            const float2 target = FbParams.resolution * FbParams.resolutionScale;
++            // This pixel in the view's -1 to 1 (y up), x squeezed back to the game's 4:3.
++            float2 p = (vertexPosition.xy / target) * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
++            const float wide = (target.x / target.y) / (4.0f / 3.0f);
++            p.x *= wide;
++            // Distance to the circle's centre, halfway between the feet and the point above them, in the
++            // view's height. Softly faded from its middle out to its edge, and not below the feet (the floor
++            // he stands on), easing off over a tenth of the radius under them.
++            const float2 a = FrParams.conkerSeeThroughEnds.xy;
++            const float2 b = FrParams.conkerSeeThroughEnds.zw;
++            float2 off = p - (a + b) * 0.5f;
++            off.x *= (4.0f / 3.0f); // x's -1 to 1 spans 4/3 of the height
++            const float inside = 1.0f - smoothstep(st.z * 0.15f, st.z, length(off));
++            const float band = st.z * 0.1f;
++            const float aboveFeet = saturate((p.y - (a.y - band)) / max(band, 1e-4f));
++            const float fade = st.w * nearness * inside * aboveFeet;
++            if (fade > 0.0f) {
++                const uint2 cell = uint2(vertexPosition.xy) & 3;
++                const float bayer[16] = { 0.0f, 8.0f, 2.0f, 10.0f, 12.0f, 4.0f, 14.0f, 6.0f, 3.0f, 11.0f, 1.0f, 9.0f, 15.0f, 7.0f, 13.0f, 5.0f };
++                if (fade * 16.0f > bayer[cell.y * 4 + cell.x] + 0.5f) {
++                    return false;
++                }
++            }
++        }
++    }
++
      const uint instanceIndex = instanceRenderIndices[gConstants.renderIndex].instanceIndex;
 -    const float4 vertexColor = renderFlagSmoothShade(rp.flags) ? vertexSmoothColor : float4(vertexFlatColor.rgb, vertexSmoothColor.a);
 +    float4 vertexColor = renderFlagSmoothShade(rp.flags) ? vertexSmoothColor : float4(vertexFlatColor.rgb, vertexSmoothColor.a);
@@ -1219,7 +1288,7 @@ index e7895c3..0d02b2e 100644
      const ColorCombiner colorCombiner = { rp.ccL, rp.ccH };
      const bool depthClampNear = renderFlagNoN(rp.flags);
      const bool depthDecal = (otherMode.zMode() == ZMODE_DEC);
-@@ -287,6 +294,10 @@ void PSMain(
+@@ -287,6 +331,10 @@ void PSMain(
  #if defined(DYNAMIC_RENDER_PARAMS) || defined(VERTEX_FLAT_COLOR)
      , nointerpolation in float4 vertexFlatColor : COLOR1
  #endif
@@ -1230,7 +1299,7 @@ index e7895c3..0d02b2e 100644
  #if defined(DYNAMIC_RENDER_PARAMS)
      , bool isFrontFace : SV_IsFrontFace
  #endif
-@@ -303,7 +314,7 @@ void PSMain(
+@@ -303,7 +351,7 @@ void PSMain(
      float4 resultColor;
      float4 resultAlpha;
      float resultDepth;
@@ -1400,6 +1469,24 @@ index 0000000..b5b9abb
 +#ifdef HLSL_CPU
 +};
 +#endif
+diff --git a/src/shared/rt64_frame_params.h b/src/shared/rt64_frame_params.h
+index 2e62aaf..c55830e 100644
+--- a/src/shared/rt64_frame_params.h
++++ b/src/shared/rt64_frame_params.h
+@@ -13,6 +13,13 @@ namespace interop {
+         uint frameCount;
+         uint viewUbershaders;
+         float ditherNoiseStrength;
++        uint conkerPadding;
++        // Conker: the see-through fade (the host's rt64_conker_see_through, host/src/free_camera.cpp).
++        // xy: Conker's feet, zw: the point above them, in the 4:3 view's -1 to 1 (y up).
++        float4 conkerSeeThroughEnds;
++        // x: the w fading starts nearer than, y: the w over which it fades in fully, z: the circle's
++        // radius in the view's height (-1 to 1), w: the most faded (0: off).
++        float4 conkerSeeThrough;
+     };
+ #ifdef HLSL_CPU
+ };
 diff --git a/src/shared/rt64_gpu_tile.h b/src/shared/rt64_gpu_tile.h
 index 4548f15..4629a38 100644
 --- a/src/shared/rt64_gpu_tile.h

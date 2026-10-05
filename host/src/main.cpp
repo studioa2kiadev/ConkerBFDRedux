@@ -145,6 +145,7 @@ namespace {
         conker::frontend::on_vi();
         conker::testing::on_vi(g_rdram);
         conker::qol::on_vi();
+        conker::see_through_on_vi();
         if (g_rdram != nullptr) {
             conker::skip_intro_on_vi(g_rdram);
             conker::qol::on_vi_memory(g_rdram);

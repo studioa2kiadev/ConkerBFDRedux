@@ -46,6 +46,13 @@ SEPARATE = {
     'game_settings': ('redux_game_settings.png', TITLE_ROWS),
     'label_camera_follow': ('redux_camera_follow.png', LABEL_ROWS),
 }
+# Words cut from other pictures (host/art/<file>, a white background too): (file, box, rows).
+# The Free Camera's notice (FREECAM ON / OFF, top left, L3: host/src/qol.cpp).
+CUT = {
+    'freecam': ('redux_freecam.png', (52, 14, 1211, 232), TITLE_ROWS),
+    'freecam_on': ('redux_freecam.png', (199, 319, 461, 465), LABEL_ROWS),
+    'freecam_off': ('redux_freecam.png', (645, 319, 949, 465), LABEL_ROWS),
+}
 LIT = { 'game_settings' } # these also get a highlighted <name>_lit.png
 MIN_BLOB = 40   # kept pixels in a group smaller than this are specks (JPEG noise, stray marks): removed
 # Single digits for 30 and 60 (the 0 is the last of 1080's: its left edge is cut where the 8 met
@@ -162,10 +169,13 @@ def main():
         crunch(word, rows).save(os.path.join(OUT, name + '.png'))
         if name in LIT:
             crunch(word, rows, lit=True).save(os.path.join(OUT, name + '_lit.png'))
+    for name, (file_name, box, rows) in CUT.items():
+        art = np.asarray(Image.open(os.path.join(ROOT, 'host', 'art', file_name)).convert('RGB'))
+        crunch(keyed(art, box), rows).save(os.path.join(OUT, name + '.png'))
     zero = keyed(atlas, DIGIT_0)
     crunch(number(keyed(atlas, DIGIT_3), zero), LABEL_ROWS).save(os.path.join(OUT, 'hz_30.png'))
     crunch(number(keyed(atlas, DIGIT_6), zero), LABEL_ROWS).save(os.path.join(OUT, 'hz_60.png'))
-    print(f'{len(WORDS) + len(SEPARATE) + len(LIT) + 2} pictures written to {os.path.normpath(OUT)}')
+    print(f'{len(WORDS) + len(SEPARATE) + len(CUT) + len(LIT) + 2} pictures written to {os.path.normpath(OUT)}')
 
 
 main()
