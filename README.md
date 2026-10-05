@@ -81,7 +81,8 @@ Conker Redux is by **studioa2kiadev**, made with Claude (Anthropic). It stands o
 - The GAME SETTINGS, VIDEO, CAMERA FOLLOW and FREECAM word art is studioa2kiadev's own
   (`host/art`). The sprite references used while designing the menus came from
   [this Banjo-Tooie font recreation](https://www.reddit.com/r/BanjoKazooie/comments/etfrrz/i_tried_to_recreate_the_banjotooie_font_you_guys/)
-  shared on r/BanjoKazooie; thank you to its artist.
+  by [u/Plebian_Donkey_Konga](https://www.reddit.com/user/Plebian_Donkey_Konga/) on r/BanjoKazooie;
+  thank you to them.
 - The see-through fade uses ordered (Bayer) dithering, a classic screen-door transparency
   technique.
 
