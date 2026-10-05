@@ -1,0 +1,13 @@
+Conker Redux word art by studioa2kiadev: CC0 1.0 Universal (public domain dedication)
+
+The GAME SETTINGS, VIDEO, QUIT GAME, CAMERA FOLLOW and FREECAM word pictures and their source art
+(host/art: redux_menu_atlas.webp, redux_game_settings.png, redux_camera_follow.png,
+redux_freecam.png; host/assets/redux_menu: the pictures made from them) are dedicated to the
+public domain. To the extent possible under law, studioa2kiadev has waived all copyright and
+related or neighboring rights to them. You can copy, modify, distribute and use them, even
+commercially, without asking permission or giving credit.
+
+Full legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+(The other files in host/art, the Coming Soon and Poppins fonts, keep their own SIL Open Font
+License; see the license files next to them.)

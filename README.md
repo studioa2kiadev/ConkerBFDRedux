@@ -78,8 +78,9 @@ Conker Redux is by **studioa2kiadev**, made with Claude (Anthropic). It stands o
   read at runtime from your own ROM, never included here.
 - **4J Studios and Rare's Xbox 360 *Banjo-Kazooie***, the inspiration for the menu layout and the
   quality-of-life features (no material from it is used).
-- The GAME SETTINGS, VIDEO, CAMERA FOLLOW and FREECAM word art is studioa2kiadev's own
-  (`host/art`). The sprite references used while designing the menus came from
+- The GAME SETTINGS, VIDEO, CAMERA FOLLOW and FREECAM word art is studioa2kiadev's own, free for
+  anyone to use under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (public domain;
+  see `host/art/REDUX_ART_LICENSE.txt`). The sprite references used while designing the menus came from
   [this Banjo-Tooie font recreation](https://www.reddit.com/r/BanjoKazooie/comments/etfrrz/i_tried_to_recreate_the_banjotooie_font_you_guys/)
   by [u/Plebian_Donkey_Konga](https://www.reddit.com/user/Plebian_Donkey_Konga/) on r/BanjoKazooie;
   thank you to them.
