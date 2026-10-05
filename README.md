@@ -2,6 +2,89 @@
   <img src="docs/banner.jpg" alt="Conker's Bad Fur Day: Reloaded" width="100%">
 </p>
 
+# Conker Redux
+
+**Conker Redux** is a fork of [Conker's Bad Fur Day: Reloaded](https://github.com/DahSidiAbdallah/ConkerBFDReloaded)
+by dahmedvall95, which builds on [CBFD-Recompiled](https://github.com/sciaschi/CBFD-Recompiled) by
+Sean Ciaschi. Everything Reloaded does is still here; this fork adds a controller-first camera, more
+quality-of-life in the spirit of 4J Studios' Xbox 360 port of *Banjo-Kazooie*, and a one-click
+Windows installer. The rest of this page after this section is Reloaded's own description.
+
+**You need your own copy of the game.** No game files are included: you point it at your own US
+ROM (SHA-1 `4cbadd3c4e0729dec46af64ad018050eada4f47a`).
+
+### Getting Conker Redux
+
+1. Download `ConkerRedux-Setup-<version>.exe` from the [Releases](../../releases) page and run it.
+2. Start **Conker Redux**. It takes a ROM sitting next to the program (`.z64`, `.n64` or `.v64`,
+   converted for you) or asks for one the first time, checks it, and goes straight into the game.
+
+Settings and saves live in `%LOCALAPPDATA%\ConkerRedux` (an existing Reloaded folder is picked up
+the first time).
+
+### What Conker Redux adds
+
+- **Analog free camera.** The right stick turns the camera around Conker with real analog values,
+  and it stays where you leave it. Smoothed turning, an optional **Camera Follow** that drifts back
+  behind Conker when you leave the stick alone, and a hover point so it doesn't scrape the ground.
+- **R3 cycles the distance:** Standard, Far and Over the Shoulder.
+- **L3 switches the free camera off and on**, with a FREECAM ON / OFF notice in the corner. Off, the
+  right stick is the N64's C-buttons, exactly as the original.
+- **See-through fade.** Whatever stands between the camera and Conker (ladders, posts, NPCs, walls)
+  is faded out with a soft dither around him instead of the camera snapping in front of it, so the
+  camera keeps its distance. It never touches Conker himself, the floor he stands on or cutscenes.
+- **Xbox-style default controls:** B is B and backs out of menus, X takes B's old C-Right, and
+  first person moves to D-pad Up.
+- **No shadow jitter at 60 fps.** Shadows used to shake while moving.
+- **GAME SETTINGS in the game's own menus.** Under CHEATS in Options, and at the bottom of the pause
+  menu: a VIDEO page with resolution (480p to 4K), aspect (4:3 / 16:9), refresh rate (30 / 60),
+  full screen and Camera Follow, drawn in the game's style.
+- **QUIT GAME.** Press B on the bar's heading carousel for a YES / NO popup that closes the game.
+- **Hold L to Skip** shows Conker's head in its ring.
+- **Click and play**, plus a GOG-style installer you can hand to a friend.
+
+The free camera's line-of-sight dodging described in Reloaded's section below is replaced by the
+see-through fade.
+
+### Conker Redux credits
+
+Conker Redux is by **studioa2kiadev**, made with Claude (Anthropic). It stands on the work of:
+
+- **[Conker's Bad Fur Day: Reloaded](https://github.com/DahSidiAbdallah/ConkerBFDReloaded)** by
+  dahmedvall95 (MIT), the project this is a fork of: nearly everything below is theirs.
+- **[CBFD-Recompiled](https://github.com/sciaschi/CBFD-Recompiled)** by Sean Ciaschi (MIT, see
+  `recomp/THIRD_PARTY_LICENSE`), including the mouse camera the free camera grew from, the Field of
+  View option and the Skip Any Cutscene mod that Hold L to Skip is based on.
+- **[mkst/conker](https://github.com/mkst/conker)**, the Conker decompilation, and the tools it's
+  built with: [splat](https://github.com/ethteck/splat) and
+  [spimdisasm](https://github.com/Decompollaborate/spimdisasm).
+- **[N64Recomp, N64ModernRuntime and RecompFrontend](https://github.com/N64Recomp)** by Wiseguy
+  and contributors, which turn the game into a PC program and give it its menus.
+- **[RT64](https://github.com/rt64/rt64)** by Darío and contributors, the renderer (the see-through
+  fade is a change to its pixel shader).
+- **[RmlUi](https://github.com/mikke89/RmlUi)** (MIT), **[SDL2](https://www.libsdl.org/)** (zlib),
+  **[miniz](https://github.com/richgel999/miniz)** (MIT; unpacks the menu art from your ROM),
+  **[nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended)** (zlib; the ROM
+  picker) and the **[DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler)**.
+- **[SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB)**, the source of the N64
+  controller and adapter mappings.
+- **[Inno Setup](https://jrsoftware.org/isinfo.php)** by Jordan Russell and Martijn Laan, which
+  builds the installer, and the Microsoft Visual C++ Redistributable it installs.
+- **[Pillow](https://python-pillow.org/)** and **[NumPy](https://numpy.org/)**, which prepare the
+  menu word art (`tools/redux_menu_art.py`).
+- **[BizHawk](https://github.com/TASEmulators/BizHawk)**, the accurate N64 emulator the comparison
+  scripts in `tools/bizhawk` run in.
+- **Rare**, for *Conker's Bad Fur Day* itself. The menu knobs, pills and letters are Rare's art,
+  read at runtime from your own ROM, never included here.
+- **4J Studios and Rare's Xbox 360 *Banjo-Kazooie***, the inspiration for the menu layout and the
+  quality-of-life features (no material from it is used).
+- The GAME SETTINGS, VIDEO, CAMERA FOLLOW and FREECAM word art is studioa2kiadev's own
+  (`host/art`).
+- The see-through fade uses ordered (Bayer) dithering, a classic screen-door transparency
+  technique.
+
+---
+
 # Conker's Bad Fur Day: Reloaded
 
 Conker's Bad Fur Day running natively on PC. It isn't an emulator: the original N64 game was
